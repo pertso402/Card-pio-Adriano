@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#DA1018" />
+  <title>Adriano Lanches · Peça agora</title>
+  <meta name="description" content="Prensados e lanches na chapa em Umuarama. Peça delivery ou retirada direto pelo cardápio." />
+  <link rel="icon" href="https://imvzfueqnpkcrxumiqwz.supabase.co/storage/v1/object/public/produto-fotos/adriano-lanches/logo.webp" type="image/webp" />
+  <link rel="apple-touch-icon" href="https://imvzfueqnpkcrxumiqwz.supabase.co/storage/v1/object/public/produto-fotos/adriano-lanches/logo.jpg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Courier+Prime:wght@400;700&family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- TOPO -->
+  <header class="top">
+    <div class="top-inner">
+      <img class="top-logo" src="https://imvzfueqnpkcrxumiqwz.supabase.co/storage/v1/object/public/produto-fotos/adriano-lanches/logo.webp" alt="Adriano Lanches" width="56" height="56" />
+      <div class="top-status" id="status"><span class="dot"></span><span id="statusText">…</span></div>
+    </div>
+  </header>
+
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track">
+      <span>PRENSADO NA CHAPA</span><i>★</i><span>DELIVERY OU RETIRADA</span><i>★</i><span>19H ATÉ 01H</span><i>★</i><span>ZONA III · UMUARAMA</span><i>★</i>
+      <span>PRENSADO NA CHAPA</span><i>★</i><span>DELIVERY OU RETIRADA</span><i>★</i><span>19H ATÉ 01H</span><i>★</i><span>ZONA III · UMUARAMA</span><i>★</i>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="kicker">Cardápio oficial · peça direto, sem app</p>
+      <h1 class="hero-title">Prensado<br>de <em>verdade.</em></h1>
+      <p class="hero-sub">Salsicha, bacon, catupiry e o que mais couber. Prensado na chapa, chega quentinho.</p>
+    </div>
+    <button class="hero-photo" id="heroPhoto" type="button" aria-label="Ver o lanche em destaque">
+      <img id="heroImg" alt="" />
+      <span class="burst" id="heroPrice"></span>
+      <span class="hero-tag" id="heroTag"></span>
+    </button>
+    <ul class="hero-facts">
+      <li><b id="factEntrega">40-60 min</b><span>entrega</span></li>
+      <li><b id="factTaxa">R$ 10</b><span>taxa fixa</span></li>
+      <li><b id="factRetirada">20-30 min</b><span>retirada</span></li>
+    </ul>
+  </section>
+
+  <!-- CLIENTE QUE VOLTA -->
+  <section class="again" id="again" hidden></section>
+
+  <!-- PEDIDO ATIVO -->
+  <button class="live-pill" id="livePill" type="button" hidden></button>
+
+  <!-- OS BRABOS -->
+  <section class="brabos">
+    <div class="sec-head">
+      <h2>Os brabos<br>da casa</h2>
+      <p>Os que mais saem da chapa.</p>
+    </div>
+    <div class="brabos-track" id="brabos"></div>
+  </section>
+
+  <!-- ABAS -->
+  <nav class="tabs" id="tabs" aria-label="Categorias"></nav>
+
+  <!-- CARDÁPIO -->
+  <main class="menu" id="menu">
+    <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+  </main>
+
+  <footer class="foot">
+    <img src="https://imvzfueqnpkcrxumiqwz.supabase.co/storage/v1/object/public/produto-fotos/adriano-lanches/logo.webp" alt="" width="72" height="72" />
+    <p id="footAddr"></p>
+    <p>Todos os dias · 19:00 às 01:00</p>
+    <a class="gear" id="gear" href="#" aria-label="Painel do restaurante" title="Painel do restaurante">⚙</a>
+  </footer>
+
+  <!-- BARRA DA COMANDA -->
+  <button class="ticket" id="ticket" type="button" aria-label="Abrir comanda">
+    <span class="ticket-count" id="ticketCount">0</span>
+    <span class="ticket-label">Ver comanda</span>
+    <span class="ticket-total" id="ticketTotal">R$ 0,00</span>
+  </button>
+
+  <!-- SHEET ÚNICO -->
+  <div class="scrim" id="scrim"></div>
+  <section class="sheet" id="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-grip"></div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </section>
+
+  <div class="toast" id="toast" role="status"></div>
+  <div class="fly" id="fly"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
