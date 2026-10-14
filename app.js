@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════
 //  ADRIANO LANCHES v2 — "Na Chapa"
-//  Loja e produtos vêm do Supabase (realtime). Cada lanche é
-//  desenhado pelo stack.js a partir dos ingredientes. Pedido é
-//  criado via RPC criar_pedido (preço recalculado no banco).
+//  Loja e produtos vêm do Supabase (realtime). Foto real em
+//  primeiro plano; produto sem foto usa o desenho do stack.js.
+//  Pedido é criado via RPC criar_pedido (preço recalculado no banco).
 // ═══════════════════════════════════════════════════════════
 'use strict';
 
@@ -19,6 +19,7 @@ const store = {
 const buzz = (ms = 10) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const OUT = 'cubic-bezier(.16, 1, .3, 1)';
 
 // ── Estado ─────────────────────────────────────────────────
 const S = {
@@ -39,6 +40,7 @@ const drinksInCart = () => S.cart.filter(l => isDrink(S.byId.get(l.id))).reduce(
 const lanchesInCart = () => S.cart.filter(l => isLanche(S.byId.get(l.id))).reduce((s, l) => s + l.qty, 0);
 const findProd = re => S.prods.find(p => p.disponivel && re.test(p.nome));
 const art = (p, opts) => Stack.svg(p.descricao || p.nome, opts);
+const distinct = p => { const c = S.common[p.categoria_id] || new Set(); return p.ing.filter(i => !/^p[aã]o$/.test(i) && !c.has(i)); };
 
 function bevLook(p) {
   const n = p.nome.toLowerCase();
@@ -66,8 +68,11 @@ function bevLook(p) {
   return { shape, c, c2, label };
 }
 const canHTML = p => { const l = bevLook(p); return `<div class="can ${l.shape}" style="--c:${l.c};--c2:${l.c2}"><span>${esc(l.label)}</span></div>`; };
-const thumb = p => isDrink(p) ? `<div style="transform:scale(.48);transform-origin:center bottom;display:flex;justify-content:center;height:100%;align-items:flex-end">${canHTML(p)}</div>`
-  : p.foto_url ? `<img class="thumb-photo" src="${esc(p.foto_url)}" alt="" loading="lazy">` : art(p);
+// imagem do produto: foto real > desenho > lata
+function media(p) {
+  if (isDrink(p)) return `<div style="position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;transform:scale(.5);transform-origin:50% 92%">${canHTML(p)}</div>`;
+  return p.foto_url ? `<img src="${esc(p.foto_url)}" alt="${esc(p.nome)}" loading="lazy" decoding="async">` : art(p);
+}
 
 // ── Carregamento ───────────────────────────────────────────
 async function loadMenu() {
@@ -87,8 +92,7 @@ function applyMenu(loja, cats, prods) {
   S.byId = new Map(S.prods.map(p => [p.id, p]));
   S.common = {};
   for (const c of S.cats) {
-    const list = S.prods.filter(p => p.categoria_id === c.id);
-    const freq = {};
+    const list = S.prods.filter(p => p.categoria_id === c.id), freq = {};
     list.forEach(p => p.ing.forEach(i => freq[i] = (freq[i] || 0) + 1));
     S.common[c.id] = new Set(Object.keys(freq).filter(i => freq[i] >= list.length * .6));
   }
@@ -100,7 +104,7 @@ async function loadSocial() {
 let reloadT;
 function subscribe() {
   const id = S.loja.id;
-  const reload = () => { clearTimeout(reloadT); reloadT = setTimeout(async () => { await loadMenu(); syncCart(); renderAll(false); }, 300); };
+  const reload = () => { clearTimeout(reloadT); reloadT = setTimeout(async () => { await loadMenu(); syncCart(); renderAll(); }, 300); };
   supa.channel('cardapio2-' + id)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'produtos', filter: `loja_id=eq.${id}` }, reload)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'categorias', filter: `loja_id=eq.${id}` }, reload)
@@ -116,135 +120,122 @@ function lojaStatus() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
   const m = now.getHours() * 60 + now.getMinutes(), abre = toMin(h.abre), fecha = toMin(h.fecha);
   const inHours = abre <= fecha ? (m >= abre && m < fecha) : (m >= abre || m < fecha);
-  if (l.modo === 'aberta') return { open: true, text: 'aberto agora' };
-  if (l.modo === 'fechada') return { open: false, text: 'fechado agora' };
-  return inHours ? { open: true, text: `aberto até ${h.fecha}` } : { open: false, text: `abre às ${h.abre}` };
+  if (l.modo === 'aberta') return { open: true, text: 'Aberto agora' };
+  if (l.modo === 'fechada') return { open: false, text: 'Fechado agora' };
+  return inHours ? { open: true, text: `Aberto até ${h.fecha}` } : { open: false, text: `Abre às ${h.abre}` };
 }
 
 // ── Render geral ───────────────────────────────────────────
-function renderStrip() {
-  const fotos = S.prods.filter(p => p.foto_url && p.disponivel);
-  $('strip').hidden = !fotos.length;
-  $('stripTrack').innerHTML = [...fotos, ...fotos].map(p => `<button class="strip-item" onclick="openItem('${p.id}')"><img src="${esc(p.foto_url)}" alt="${esc(p.nome)}" loading="lazy"><span>${esc(p.nome)}<b>${short(p.preco)}</b></span></button>`).join('');
-}
-function renderAll(withHero = true) {
-  renderStatus(); renderStrip(); if (withHero) renderHero(); renderTabs(); renderMenu(); renderAgain(); updateTray();
-}
+function renderAll() { renderStatus(); renderHero(); renderTabs(); renderMenu(); renderAgain(); updateTray(); }
 function renderStatus() {
   const st = lojaStatus(), c = S.loja.config || {};
   $('statusText').textContent = st.text;
   $('status').classList.toggle('closed', !st.open);
+  $('factEntrega').textContent = c.tempo_entrega || '—';
+  $('factRetirada').textContent = c.tempo_retirada || '—';
+  $('factTaxa').textContent = c.taxa_entrega ? short(c.taxa_entrega) : 'Grátis';
   $('footAddr').textContent = c.endereco || '';
   $('footHours').textContent = `todos os dias · ${c.horario?.abre || '19:00'} às ${c.horario?.fecha || '01:00'}`;
   const painel = typeof PAINEL_URL !== 'undefined' ? PAINEL_URL : '';
   $('gear').hidden = !painel; if (painel) $('gear').href = painel;
 }
 
-// ── HERO: anatomia → prensa conforme rola ──────────────────
+// ── HERO ───────────────────────────────────────────────────
 function pickHero() {
-  const ok = p => isLanche(p) && p.disponivel;
+  const ok = p => isLanche(p) && p.disponivel && p.foto_url;
   return S.prods.find(p => ok(p) && p.tags.includes('mais-pedido'))
     || (S.social.top || []).map(id => S.byId.get(id)).find(ok)
-    || S.prods.filter(ok).sort((a, b) => b.ing.length - a.ing.length)[0];
+    || S.prods.find(ok);
 }
-const shortName = p => p.nome.replace(/^Especial\s+(com\s+)?/i, '');
 function renderHero() {
   const p = pickHero(); if (!p) return;
   S.hero = p;
-  $('heroName').textContent = shortName(p);
-  $('heroPriceLabel').textContent = `um ${shortName(p)} sai por`;
+  const img = $('heroImg');
+  if (img.getAttribute('src') !== p.foto_url) img.src = p.foto_url;
+  img.alt = p.nome;
+  $('heroName').textContent = p.nome;
+  $('heroIng').textContent = distinct(p).join(' · ') || p.ing.slice(1, 5).join(' · ');
   $('heroPrice').textContent = short(p.preco);
-  $('heroStack').innerHTML = art(p, { labels: true });
-  $('heroPhoto').innerHTML = p.foto_url ? `<img src="${esc(p.foto_url)}" alt="${esc(p.nome)}"><span class="mono">foto real · saindo da chapa</span>` : '';
-  $('heroBtn').onclick = () => openItem(p.id);
-  $('heroBtn').textContent = 'Quero esse';
-  heroScroll();
+  $('heroBadge').textContent = p.tags.includes('mais-pedido') ? 'Mais pedido' : 'Destaque';
+  $('heroCard').onclick = () => openItem(p.id, $('heroCard').querySelector('.hero-media'));
 }
-const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
-const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-let heroTick = false;
-function heroScroll() {
-  const hero = $('hero'), stack = $('heroStack'), press = $('press'), stage = $('heroStage');
-  if (!hero || !stack.firstElementChild) return;
-  const total = hero.offsetHeight - innerHeight;
-  const p = reduced ? 1 : clamp(-hero.getBoundingClientRect().top / total);
-  // 1) camadas se juntam
-  const join = ease(clamp(p / .5));
-  stack.style.setProperty('--gap', (34 * (1 - join)).toFixed(2));
-  stack.style.setProperty('--lbo', clamp(1 - p / .38).toFixed(2));
-  // 2) sem as legendas, o lanche cresce e vai pro centro
-  const svgEl = stack.firstElementChild;
-  const sc = 1 + .38 * join, tx = (.5 - .32) * svgEl.clientWidth * join;
-  // 3) a prensa desce, aperta e sobe
-  const sr = stage.getBoundingClientRect();
-  const layers = svgEl.querySelectorAll('.ly');
-  const topBread = layers[layers.length - 1].getBoundingClientRect().top - sr.top;
-  const down = clamp((p - .45) / .17), squeeze = clamp((p - .62) / .1), up = clamp((p - .8) / .12);
-  const sq = Math.sin(squeeze * Math.PI) * 16;
-  const hit = topBread - press.offsetHeight + 2, start = hit - 150;
-  const y = start + (hit - start) * ease(down) + sq - 170 * ease(up);
-  press.style.setProperty('--press-y', `${y.toFixed(1)}px`);
-  press.style.opacity = Math.min(clamp(down * 4), 1 - up).toFixed(2);
-  svgEl.style.transformOrigin = '32% 100%';
-  svgEl.style.transform = `translateX(${tx.toFixed(1)}px) scale(${sc.toFixed(3)}, ${(sc * (1 - sq / 110)).toFixed(3)})`;
-  stage.style.setProperty('--heat', clamp((p - .55) / .3).toFixed(2));
-  $('steam').classList.toggle('on', p > .6);
-  hero.classList.toggle('done', p > .7);
-  hero.classList.toggle('reveal', p > .9 && !!S.hero?.foto_url);
-  hero.classList.toggle('moving', p > .02);
+// parallax leve da foto do hero
+let scrollTick = false;
+function onScroll() {
+  const y = scrollY;
+  $('bar').classList.toggle('solid', y > 24);
+  if (y < innerHeight * 1.2) $('heroImg').style.setProperty('--py', `${(y * .12).toFixed(1)}px`);
 }
-addEventListener('scroll', () => {
-  if (!heroTick) { heroTick = true; requestAnimationFrame(() => { heroScroll(); heroTick = false; }); }
-  $('bar').classList.toggle('solid', scrollY > 30);
-}, { passive: true });
-addEventListener('resize', heroScroll);
+addEventListener('scroll', () => { if (!scrollTick) { scrollTick = true; requestAnimationFrame(() => { onScroll(); scrollTick = false; }); } }, { passive: true });
 
-// ── Abas + cardápio ────────────────────────────────────────
-const catShort = c => ({ 'prensados-salsicha': 'Salsicha', 'lanches-hamburguer': 'Hambúrguer', bebidas: 'Geladas' }[c.slug] || c.nome);
+// ── Abas com indicador deslizante ──────────────────────────
+const catShort = c => ({ 'prensados-salsicha': 'Salsicha', 'lanches-hamburguer': 'Hambúrguer', bebidas: 'Bebidas' }[c.slug] || c.nome);
 function renderTabs() {
-  $('tabs').innerHTML = `<div class="tabs-in">${S.cats.map((c, i) =>
-    `<button class="tab ${i === 0 ? 'on' : ''}" data-cat="${c.id}" onclick="goCat('${c.id}')">${esc(catShort(c))}<sup>${S.prods.filter(p => p.categoria_id === c.id && p.disponivel).length}</sup></button>`).join('')}</div>`;
+  $('tabs').innerHTML = `<div class="tabs-in"><span class="tabs-pill" id="tabsPill"></span>${S.cats.map((c, i) =>
+    `<button class="tab ${i === 0 ? 'on' : ''}" data-cat="${c.id}" onclick="goCat('${c.id}')">${esc(catShort(c))}</button>`).join('')}</div>`;
+  requestAnimationFrame(() => movePill(document.querySelector('.tab.on'), false));
 }
+function movePill(tab, animate = true) {
+  const pill = $('tabsPill'); if (!pill || !tab) return;
+  if (!animate) pill.style.transition = 'none';
+  pill.style.width = tab.offsetWidth + 'px';
+  pill.style.transform = `translateX(${tab.offsetLeft}px)`;
+  if (!animate) requestAnimationFrame(() => pill.style.transition = '');
+}
+function setTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.cat === id));
+  movePill(document.querySelector('.tab.on'));
+}
+let lockObs = 0;
 function goCat(id) {
-  const el = document.getElementById('cat-' + id);
-  if (el) scrollTo({ top: el.getBoundingClientRect().top + scrollY - 120, behavior: 'smooth' });
+  const el = document.getElementById('cat-' + id); if (!el) return;
+  setTab(id); lockObs = Date.now();
+  scrollTo({ top: el.getBoundingClientRect().top + scrollY - 128, behavior: 'smooth' });
 }
-function stickers(p) {
+addEventListener('resize', () => movePill(document.querySelector('.tab.on'), false));
+
+// ── Cardápio ───────────────────────────────────────────────
+function badge(p) {
   const top = new Set((S.social.top || []).slice(0, 3));
-  if (top.has(p.id) || p.tags.includes('mais-pedido')) return '<span class="sticker red">mais pedido</span>';
-  if (p.tags.includes('favorito')) return '<span class="sticker">favorito da casa</span>';
-  if (p.tags.includes('monstro')) return '<span class="sticker">monstro</span>';
-  if (p.tags.includes('premium')) return '<span class="sticker">premium</span>';
-  if (p.tags.includes('veggie')) return '<span class="sticker veg">veggie</span>';
+  if (top.has(p.id) || p.tags.includes('mais-pedido')) return '<span class="badge hot">Mais pedido</span>';
+  if (p.tags.includes('favorito')) return '<span class="badge">Favorito da casa</span>';
+  if (p.tags.includes('monstro')) return '<span class="badge">Monstro</span>';
+  if (p.tags.includes('premium')) return '<span class="badge">Premium</span>';
+  if (p.tags.includes('veggie')) return '<span class="badge veg">Veggie</span>';
   return '';
 }
-function cardHTML(p, k, wide) {
-  const common = S.common[p.categoria_id] || new Set();
-  const ing = p.ing.filter(i => !/^p[aã]o$/.test(i)).map(i => common.has(i) ? esc(i) : `<b>${esc(i)}</b>`).join(', ');
+function rowHTML(p) {
+  const c = S.common[p.categoria_id] || new Set();
+  const ing = p.ing.filter(i => !/^p[aã]o$/.test(i)).map(i => c.has(i) ? esc(i) : `<b>${esc(i)}</b>`).join(', ');
   const q = qtyOf(p.id);
-  return `<article class="card ${wide ? 'wide' : ''} ${p.disponivel ? '' : 'off'}" style="--k:${k}" onclick="openItem('${p.id}')">
-    <div class="card-stage ${p.foto_url ? 'has-photo' : ''}">${stickers(p)}${p.foto_url ? `<img class="card-photo" src="${esc(p.foto_url)}" alt="${esc(p.nome)}" loading="lazy"><span class="xray" title="ver por dentro">${art(p)}</span>` : art(p)}</div>
-    <div class="card-body">
-      <h3 class="card-name">${esc(p.nome)}</h3>
-      ${ing ? `<p class="card-ing">${ing}</p>` : ''}
-      <div class="card-foot"><span class="price"><small>R$</small>${short(p.preco).replace('R$ ', '')}</span>
-        <button class="plus ${q ? 'in' : ''}" data-id="${p.id}" aria-label="Adicionar ${esc(p.nome)}" onclick="event.stopPropagation();quickAdd('${p.id}')">${q ? q + 'x' : '+'}</button></div>
-    </div>
+  return `<article class="row ${p.disponivel ? '' : 'off'}" role="button" tabindex="0" onclick="openItem('${p.id}', this.querySelector('.thumb'))" onkeydown="if(event.key==='Enter')this.click()">
+    <span class="row-txt">
+      <span class="row-name">${esc(p.nome)}</span>
+      ${ing ? `<span class="row-ing">${ing}</span>` : ''}
+      <span class="row-meta"><span class="price"><small>R$</small> ${short(p.preco).replace('R$ ', '')}</span>${badge(p)}</span>
+    </span>
+    <span class="thumb-wrap"><span class="thumb">${media(p)}</span><span class="add ${q ? 'in' : ''}" data-id="${p.id}" role="button" aria-label="Adicionar ${esc(p.nome)}" onclick="event.stopPropagation();quickAdd('${p.id}', this.previousElementSibling)">${q ? q + 'x' : '+'}</span></span>
   </article>`;
 }
+function topPicks() {
+  const ok = p => isLanche(p) && p.disponivel && p.foto_url;
+  const ranked = [...S.prods.filter(p => ok(p) && p.tags.includes('mais-pedido')), ...(S.social.top || []).map(id => S.byId.get(id)).filter(ok), ...S.prods.filter(p => ok(p) && p.destaque), ...S.prods.filter(ok)];
+  return [...new Set(ranked)].slice(0, 6);
+}
 function renderMenu() {
-  $('menu').innerHTML = S.cats.map(c => {
+  const picks = topPicks();
+  const top = picks.length ? `<section class="top"><div class="top-head"><h2>Os mais pedidos</h2><span>arrasta →</span></div>
+    <div class="top-track">${picks.map((p, i) => `<button class="tcard" type="button" onclick="openItem('${p.id}', this)">
+      <img src="${esc(p.foto_url)}" alt="${esc(p.nome)}" loading="lazy" decoding="async"><span class="rank">#${i + 1}</span>
+      <span class="tcard-info"><span><b>${esc(p.nome)}</b><small>${short(p.preco)}</small></span></span></button>`).join('')}</div></section>` : '';
+  $('menu').innerHTML = top + S.cats.map(c => {
     const list = S.prods.filter(p => p.categoria_id === c.id);
     if (!list.length) return '';
     if (c.slug === 'bebidas') return renderFridge(c, list);
-    const feat = list.filter(p => p.destaque && p.disponivel).sort((a, b) => (!!b.foto_url - !!a.foto_url) || b.ing.length - a.ing.length)[0];
-    const rest = list.filter(p => p !== feat);
-    return `<section class="cat" id="cat-${c.id}">
-      <div class="cat-head"><h2>${esc(c.nome)}</h2><p>${list.length} na chapa</p></div>
-      <div class="grid">${feat ? cardHTML(feat, 0, true) : ''}${rest.map((p, i) => cardHTML(p, i + 1, false)).join('')}</div>
-    </section>`;
+    return `<section class="cat" id="cat-${c.id}"><div class="cat-head"><h2>${esc(c.nome)}</h2><span>${list.length} opções</span></div>
+      <div class="list">${list.map(rowHTML).join('')}</div></section>`;
   }).join('');
-  observeCats();
+  observeCats(); reveal();
 }
 function shelfOf(p) {
   const s = bevLook(p).shape;
@@ -256,35 +247,45 @@ function shelfOf(p) {
 }
 function bevHTML(p, origem = 'cardapio') {
   const q = qtyOf(p.id);
-  return `<button class="bev" type="button" data-id="${p.id}" onclick="addDrink('${p.id}','${origem}')" aria-label="Adicionar ${esc(p.nome)}">
+  return `<button class="bev" type="button" data-id="${p.id}" onclick="addDrink('${p.id}','${origem}', this.querySelector('.can'))" aria-label="Adicionar ${esc(p.nome)}">
     ${q ? `<span class="bev-qty">${q}</span>` : ''}${canHTML(p)}
     <span class="bev-name">${esc(p.nome)}</span><span class="bev-price">${short(p.preco)}</span></button>`;
 }
 function renderFridge(c, list) {
-  const order = ['Latinhas 350ml', 'Garrafinhas', '600ml', '2 litros · pra galera', 'Sucos & energéticos', 'Águas'];
-  const groups = {};
+  const order = ['Latinhas 350ml', 'Garrafinhas', '600ml', '2 litros · pra galera', 'Sucos & energéticos', 'Águas'], groups = {};
   list.filter(p => p.disponivel).forEach(p => (groups[shelfOf(p)] ||= []).push(p));
-  return `<section class="cat" id="cat-${c.id}">
-    <div class="cat-head"><h2>Geladeira</h2><p>toca pra pegar</p></div>
-    <div class="fridge">${order.filter(g => groups[g]).map(g => `<div class="shelf-label">${g}</div><div class="shelf">${groups[g].map(p => bevHTML(p)).join('')}</div>`).join('')}</div>
-  </section>`;
+  return `<section class="cat" id="cat-${c.id}"><div class="cat-head"><h2>Bebidas</h2><span>toca pra pegar</span></div>
+    <div class="fridge">${order.filter(g => groups[g]).map(g => `<div class="shelf-label">${g}</div><div class="shelf">${groups[g].map(p => bevHTML(p)).join('')}</div>`).join('')}</div></section>`;
 }
 let catObs;
 function observeCats() {
   catObs?.disconnect();
   catObs = new IntersectionObserver(es => es.forEach(e => {
-    if (!e.isIntersecting) return;
-    const id = e.target.id.replace('cat-', '');
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.cat === id));
-  }), { rootMargin: '-40% 0px -55% 0px' });
+    if (!e.isIntersecting || Date.now() - lockObs < 900) return;
+    setTab(e.target.id.replace('cat-', ''));
+  }), { rootMargin: '-35% 0px -60% 0px' });
   document.querySelectorAll('.cat').forEach(el => catObs.observe(el));
 }
+// entrada suave dos itens conforme aparecem
+let revObs;
+function reveal() {
+  if (reduced) return;
+  revObs?.disconnect();
+  revObs = new IntersectionObserver(es => {
+    let k = 0;
+    es.forEach(e => { if (!e.isIntersecting) return; e.target.style.setProperty('--d', `${Math.min(k++, 6) * 60}ms`); e.target.classList.add('in'); revObs.unobserve(e.target); });
+  }, { rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.row, .tcard, .fridge, .cat-head').forEach(el => {
+    if (el.getBoundingClientRect().top < innerHeight) return; // o que já está na tela fica parado
+    el.classList.add('pre'); revObs.observe(el);
+  });
+}
 function refreshBadges() {
-  document.querySelectorAll('.plus[data-id]').forEach(b => { const q = qtyOf(b.dataset.id); b.classList.toggle('in', q > 0); b.textContent = q ? q + 'x' : '+'; });
+  document.querySelectorAll('.add[data-id]').forEach(b => { const q = qtyOf(b.dataset.id); b.classList.toggle('in', q > 0); b.textContent = q ? q + 'x' : '+'; });
   document.querySelectorAll('.bev[data-id]').forEach(b => {
-    const q = qtyOf(b.dataset.id); let badge = b.querySelector('.bev-qty');
-    if (q && !badge) { badge = document.createElement('span'); badge.className = 'bev-qty'; b.prepend(badge); }
-    if (badge) { if (q) badge.textContent = q; else badge.remove(); }
+    const q = qtyOf(b.dataset.id); let el = b.querySelector('.bev-qty');
+    if (q && !el) { el = document.createElement('span'); el.className = 'bev-qty'; b.prepend(el); }
+    if (el) { if (q) el.textContent = q; else el.remove(); }
   });
 }
 
@@ -295,9 +296,9 @@ function renderAgain() {
   if (!itens.length || S.cart.length) { el.hidden = true; return; }
   const first = S.byId.get((itens.find(i => isLanche(S.byId.get(i.id))) || itens[0]).id);
   const nome = cli?.nome ? cli.nome.split(' ')[0] : '';
-  el.innerHTML = `<div class="again-art">${thumb(first)}</div>
-    <div class="again-txt"><b>${nome ? `E aí, ${esc(nome)}!` : 'De volta!'} Repete o de sempre?</b><span>${esc(itens.map(i => `${i.qty}x ${S.byId.get(i.id).nome}`).join(', '))}</span></div>
-    <button class="btn cream" style="flex:0 0 auto;min-height:44px;font-size:.95rem" onclick="repeatLast()">Repetir</button>`;
+  el.innerHTML = `<span class="again-thumb">${media(first)}</span>
+    <span class="again-txt"><b>${nome ? `E aí, ${esc(nome)}! ` : ''}Repete o de sempre?</b><span>${esc(itens.map(i => `${i.qty}x ${S.byId.get(i.id).nome}`).join(', '))}</span></span>
+    <button onclick="repeatLast()">Repetir</button>`;
   el.hidden = false;
 }
 function repeatLast() {
@@ -307,12 +308,12 @@ function repeatLast() {
 
 // ── Carrinho ───────────────────────────────────────────────
 const lineKey = l => `${l.id}|${[...(l.remove || [])].sort().join(',')}|${l.obs || ''}|${l.origem}`;
-function addLine(line) {
+function addLine(line, bump = true) {
   const l = { remove: [], obs: '', origem: 'cardapio', qty: 1, ...line };
   l.key = lineKey(l);
   const ex = S.cart.find(x => x.key === l.key);
   if (ex) ex.qty += l.qty; else S.cart.push(l);
-  saveCart(true);
+  saveCart(bump);
 }
 function saveCart(bump) { store.set('adl2_cart', S.cart); updateTray(bump); refreshBadges(); }
 function syncCart() {
@@ -334,33 +335,58 @@ function freteFalta() {
   const g = Number(S.loja?.config?.frete_gratis_acima || 0);
   return g && S.mode === 'delivery' ? { meta: g, falta: Math.max(0, g - subtotal()) } : null;
 }
+let lastCount = 0;
 function updateTray(bump) {
   const n = count(), f = freteFalta();
-  $('barCount').textContent = n;
+  const odo = $('barCount');
+  if (n !== lastCount) { odo.innerHTML = `<span>${n}</span>`; odo.classList.remove('roll'); void odo.offsetWidth; odo.classList.add('roll'); lastCount = n; }
   $('trayCount').textContent = `${n} ${n === 1 ? 'item' : 'itens'}`;
   $('trayTotal').textContent = short(subtotal());
   $('trayLabel').textContent = f && n ? (f.falta > 0 ? `Faltam ${fmt(f.falta)} p/ frete grátis` : 'Frete grátis garantido') : 'Ver comanda';
-  const lanches = S.cart.map(l => S.byId.get(l.id)).filter(isLanche).slice(-3);
-  $('trayStacks').innerHTML = lanches.map(p => art(p)).join('');
-  $('trayStacks').hidden = !lanches.length;
+  const thumbs = [...new Set(S.cart.map(l => l.id))].map(id => S.byId.get(id)).filter(isLanche).slice(-3);
+  $('trayThumbs').innerHTML = thumbs.map(p => `<span>${media(p)}</span>`).join('');
+  $('trayThumbs').hidden = !thumbs.length;
   $('tray').classList.toggle('show', n > 0 && !$('sheet').classList.contains('open'));
-  if (bump && n) {
-    const t = $('tray'); t.classList.remove('bump'); void t.offsetWidth; t.classList.add('bump');
-    const b = $('barCart'); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
-  }
+  if (bump && n) { const t = $('tray'); t.classList.remove('bump'); void t.offsetWidth; t.classList.add('bump'); }
 }
-function quickAdd(id) {
+
+// imagem voa até a comanda
+function flyToCart(fromEl) {
+  if (!fromEl || reduced) return;
+  const a = fromEl.getBoundingClientRect();
+  const target = $('tray').classList.contains('show') ? $('trayThumbs') : $('barCart');
+  const b = target.getBoundingClientRect();
+  const fly = document.createElement('div');
+  fly.className = 'flyer';
+  const src = fromEl.querySelector('img, svg, .can');
+  fly.innerHTML = src ? src.outerHTML : '';
+  const size = Math.min(a.width, a.height, 120);
+  Object.assign(fly.style, { left: '0px', top: '0px', width: size + 'px', height: size + 'px' });
+  document.body.appendChild(fly);
+  const x0 = a.left + a.width / 2 - size / 2, y0 = a.top + a.height / 2 - size / 2;
+  const x1 = b.left + b.width / 2 - size / 2, y1 = b.top + b.height / 2 - size / 2;
+  const peak = Math.min(y0, y1) - 120;
+  fly.animate([
+    { transform: `translate(${x0}px, ${y0}px) scale(1)`, opacity: 1 },
+    { transform: `translate(${(x0 + x1) / 2}px, ${peak}px) scale(.7) rotate(-8deg)`, opacity: 1, offset: .5 },
+    { transform: `translate(${x1}px, ${y1}px) scale(.2) rotate(6deg)`, opacity: .4 },
+  ], { duration: 720, easing: 'cubic-bezier(.45, 0, .2, 1)' }).onfinish = () => fly.remove();
+}
+function quickAdd(id, fromEl) {
   const p = S.byId.get(id); if (!p?.disponivel) return;
-  addLine({ id, origem: 'cardapio' }); buzz(); afterAdd(p);
+  flyToCart(fromEl);
+  addLine({ id, origem: 'cardapio' }, false);
+  buzz();
+  setTimeout(() => { updateTray(true); afterAdd(p); }, reduced ? 0 : 560);
 }
-function addDrink(id, origem) {
+function addDrink(id, origem, fromEl) {
   const p = S.byId.get(id); if (!p?.disponivel) return;
   if (/com ou sem g[aá]s/i.test(p.descricao || '')) return openWater(p, origem);
   addLine({ id, origem }); buzz();
-  if ($('sheet').classList.contains('open')) refreshSheet(); else toast(`${p.nome} na comanda`);
+  if ($('sheet').classList.contains('open')) refreshSheet(); else { flyToCart(fromEl); toast(`${p.nome} na comanda`); }
 }
 function afterAdd(p) {
-  if (isLanche(p) && drinksInCart() === 0 && S.drinkAsked < 2) { S.drinkAsked++; setTimeout(() => { if (!$('sheet').classList.contains('open')) openDrinks(p); }, 380); }
+  if (isLanche(p) && drinksInCart() === 0 && S.drinkAsked < 2) { S.drinkAsked++; setTimeout(() => { if (!$('sheet').classList.contains('open')) openDrinks(p); }, 260); }
   else toast(`${p.nome} na comanda`);
 }
 
@@ -384,7 +410,7 @@ function closeSheet(fromPop = false) {
   sh.classList.remove('open'); $('scrim').classList.remove('open'); document.body.classList.remove('lock');
   view = null; stopTrack();
   if (!fromPop && history.state?.sheet) history.back();
-  setTimeout(updateTray, 200);
+  setTimeout(updateTray, 250);
 }
 addEventListener('popstate', () => closeSheet(true));
 addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
@@ -392,84 +418,95 @@ $('scrim').onclick = () => closeSheet();
 $('tray').onclick = () => openReceipt();
 $('barCart').onclick = () => openReceipt();
 
+// a foto "cresce" do cartão até o topo da tela do item
+function flipFrom(srcEl) {
+  const target = $('itMedia');
+  if (!srcEl || !target || reduced || !target.querySelector('img')) return;
+  const s = srcEl.getBoundingClientRect(), sh = $('sheet').getBoundingClientRect();
+  const offset = sh.top - (innerHeight - sh.height);           // quanto o sheet ainda vai subir
+  const t = target.getBoundingClientRect();
+  const fly = document.createElement('div');
+  fly.className = 'flyer';
+  fly.innerHTML = `<img src="${target.querySelector('img').src}" alt="">`;
+  Object.assign(fly.style, { left: s.left + 'px', top: s.top + 'px', width: s.width + 'px', height: s.height + 'px', borderRadius: getComputedStyle(srcEl).borderRadius, boxShadow: 'none' });
+  document.body.appendChild(fly);
+  target.classList.add('hide-content');
+  fly.animate([
+    { left: s.left + 'px', top: s.top + 'px', width: s.width + 'px', height: s.height + 'px' },
+    { left: t.left + 'px', top: (t.top - offset) + 'px', width: t.width + 'px', height: t.height + 'px', borderRadius: '28px 28px 0 0' },
+  ], { duration: 560, easing: OUT, fill: 'forwards' }).onfinish = () => { target.classList.remove('hide-content'); fly.remove(); };
+}
+
 // ── Montar o lanche ────────────────────────────────────────
 let IT = null;
-function openItem(id) {
+function openItem(id, srcEl) {
   const p = S.byId.get(id); if (!p) return;
-  if (isDrink(p)) return addDrink(id, 'cardapio');
+  if (isDrink(p)) return addDrink(id, 'cardapio', srcEl);
   IT = { id, remove: new Set(), turbo: false, qty: 1, obs: '', obsOpen: false, show: p.foto_url ? 'photo' : 'inside', anim: 'build', hl: [] };
   openSheet(itemView);
+  flipFrom(srcEl);
 }
 const itShown = () => { const p = S.byId.get(IT.id), up = p.upgrade_para && S.byId.get(p.upgrade_para); return IT.turbo && up?.disponivel ? up : p; };
 function itemView() {
   const p = S.byId.get(IT.id), up = p.upgrade_para && S.byId.get(p.upgrade_para), upOk = up?.disponivel, shown = itShown();
   const extra = upOk ? up.ing.filter(i => !p.ing.includes(i)) : [];
-  const stackOpts = { removed: [...IT.remove], highlight: IT.hl };
-  let stage = art(shown, stackOpts);
+  const photo = IT.show === 'photo' && shown.foto_url;
+  let stage = art(shown, { removed: [...IT.remove], highlight: IT.hl });
   if (IT.anim === 'build') stage = stage.replace('class="stack', 'class="stack build');
   IT.anim = 'none'; IT.hl = [];
-  const photo = IT.show === 'photo' && shown.foto_url;
   return `
-    <div class="it-stage" id="itStage">
+    <div class="it-media" id="itMedia">
+      ${photo ? `<img src="${esc(shown.foto_url)}" alt="${esc(shown.nome)}">` : stage}
       <button class="it-close" onclick="closeSheet()" aria-label="Fechar">✕</button>
-      ${shown.foto_url ? `<div class="it-view"><button class="${photo ? 'on' : ''}" onclick="itShow('photo')">foto</button><button class="${photo ? '' : 'on'}" onclick="itShow('inside')">por dentro</button></div>` : ''}
-      <div class="press"><span></span></div>
-      ${photo ? `<img class="photo" src="${esc(shown.foto_url)}" alt="${esc(shown.nome)}">` : stage}
+      ${shown.foto_url ? `<div class="it-view"><button class="${photo ? 'on' : ''}" onclick="itShow('photo')">Foto</button><button class="${photo ? '' : 'on'}" onclick="itShow('inside')">Por dentro</button></div>` : ''}
     </div>
     <div class="it-head"><h2 class="it-name">${esc(shown.nome)}</h2><span class="it-price">${short(shown.preco)}</span></div>
-    ${shown.ing.length ? `<div class="it-sec"><p class="it-label">toque pra tirar</p><div class="chips">${shown.ing.map(i => {
-      const k = Stack.keyOf(i) || 'pao', fixed = k === 'pao';
-      return `<button class="chip ${fixed ? 'fixed' : ''} ${IT.remove.has(i) ? 'off' : ''}" style="--c:${Stack.COLOR[k] || '#888'}" onclick="toggleIng(this.dataset.i)" data-i="${esc(i)}"><i></i>${esc(i)}</button>`;
-    }).join('')}</div></div>` : ''}
+    ${shown.ing.length ? `<p class="it-label">Toque pra tirar o que não curte</p><div class="chips">${shown.ing.map(i => {
+      const k = Stack.keyOf(i) || 'pao';
+      return `<button class="chip-i ${k === 'pao' ? 'fixed' : ''} ${IT.remove.has(i) ? 'off' : ''}" style="--c:${Stack.COLOR[k] || '#888'}" data-i="${esc(i)}" onclick="toggleIng(this.dataset.i)"><i></i>${esc(i)}</button>`;
+    }).join('')}</div>` : ''}
     ${upOk ? `<button class="turbo ${IT.turbo ? 'on' : ''}" onclick="toggleTurbo()">
-      <span class="turbo-ico">⚡</span>
-      <span class="turbo-txt"><small>turbina por + ${fmt(up.preco - p.preco)}</small><b>Vira ${esc(up.nome)}</b><span>${extra.length ? 'ganha ' + extra.map(e => '+ ' + esc(e)).join(', ') : 'versão mais caprichada'}</span></span>
+      <span class="turbo-ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg></span>
+      <span class="turbo-txt"><small>Turbina por + ${fmt(up.preco - p.preco)}</small><b>Vira ${esc(up.nome)}</b><span>${extra.length ? 'ganha ' + extra.map(e => '+ ' + esc(e)).join(', ') : 'versão mais caprichada'}</span></span>
       <span class="sw"></span></button>` : ''}
     ${IT.obsOpen
-      ? `<div class="it-sec" style="margin-top:16px"><textarea class="field" id="itObs" maxlength="140" placeholder="Ex.: bem passado, molho à parte…" oninput="IT.obs=this.value">${esc(IT.obs)}</textarea></div>`
-      : `<button class="obs-link" onclick="IT.obsOpen=true;refreshSheet();setTimeout(()=>$('itObs')?.focus(),60)">+ alguma observação?</button>`}
+      ? `<div class="pad" style="margin-top:16px"><textarea class="field" id="itObs" maxlength="140" placeholder="Ex.: bem passado, molho à parte…" oninput="IT.obs=this.value">${esc(IT.obs)}</textarea></div>`
+      : `<button class="obs-link" onclick="IT.obsOpen=true;refreshSheet();setTimeout(()=>$('itObs')?.focus(),60)">+ Alguma observação?</button>`}
     <div class="foot-bar">
       <div class="qty"><button onclick="itQty(-1)" aria-label="Menos">−</button><span>${IT.qty}</span><button onclick="itQty(1)" aria-label="Mais">+</button></div>
-      <button class="btn" id="itBtn" onclick="itConfirm()"><span>Prensar e pedir</span><span>${short(shown.preco * IT.qty)}</span></button>
+      <button class="btn" id="itBtn" onclick="itConfirm()"><span>Adicionar</span><span>${short(shown.preco * IT.qty)}</span></button>
     </div>`;
 }
 function itShow(v) { IT.show = v; IT.anim = v === 'inside' ? 'build' : 'none'; refreshSheet(); }
 async function animateOut(ings) {
-  const stage = $('itStage'); if (!stage) return;
+  const m = $('itMedia'); if (!m) return;
   let hit = false;
-  ings.forEach(i => stage.querySelectorAll(`.ly[data-ing="${CSS.escape(i)}"]`).forEach(g => { g.classList.add('out'); hit = true; }));
-  if (hit) await wait(260);
+  ings.forEach(i => m.querySelectorAll(`.ly[data-ing="${CSS.escape(i)}"]`).forEach(g => { g.classList.add('out'); hit = true; }));
+  if (hit) await wait(280);
 }
+// mexer nos ingredientes mostra o "por dentro", onde a mudança aparece
 async function toggleIng(i) {
   buzz();
   if (IT.show === 'photo') { IT.show = 'inside'; IT.anim = 'none'; }
   if (IT.remove.has(i)) { IT.remove.delete(i); IT.hl = [i]; }
-  else { IT.remove.add(i); if (IT.show === 'inside') await animateOut([i]); }
+  else { IT.remove.add(i); refreshSheet(); await animateOut([i]); }
   refreshSheet();
 }
 async function toggleTurbo() {
-  const p = S.byId.get(IT.id), up = S.byId.get(p.upgrade_para);
-  const extra = up.ing.filter(i => !p.ing.includes(i));
+  const p = S.byId.get(IT.id), up = S.byId.get(p.upgrade_para), extra = up.ing.filter(i => !p.ing.includes(i));
   buzz(15);
-  if (IT.show === 'photo') { IT.show = 'inside'; IT.anim = 'none'; }
-  if (!IT.turbo) { IT.turbo = true; IT.hl = extra; }
+  if (!IT.turbo) { IT.turbo = true; IT.hl = extra; if (!up.foto_url) IT.show = 'inside'; }
   else { if (IT.show === 'inside') await animateOut(extra); IT.turbo = false; }
   refreshSheet();
 }
 function itQty(d) { IT.qty = Math.max(1, Math.min(20, IT.qty + d)); refreshSheet(); }
 async function itConfirm() {
-  const p = S.byId.get(IT.id), shown = itShown();
-  const btn = $('itBtn'); btn.disabled = true;
-  // prensa desce, lanche amassa, vapor
-  const stage = $('itStage'), svg = stage.querySelector('svg.stack');
-  if (svg && !reduced) {
-    const layers = svg.querySelectorAll('.ly');
-    const top = layers[layers.length - 1].getBoundingClientRect().top - stage.getBoundingClientRect().top;
-    stage.style.setProperty('--hit', `${Math.max(0, top - stage.querySelector('.press').offsetHeight + 6)}px`);
-    stage.classList.add('pressing'); buzz(30);
-    await wait(720);
-  }
+  const p = S.byId.get(IT.id), shown = itShown(), btn = $('itBtn');
+  btn.disabled = true; btn.classList.add('done'); btn.innerHTML = '<span>Adicionado ✓</span><span></span>';
+  buzz(20);
+  flyToCart($('itMedia'));
   addLine({ id: shown.id, qty: IT.qty, remove: [...IT.remove].filter(i => shown.ing.includes(i)), obs: (IT.obs || '').trim(), origem: shown === p ? 'cardapio' : 'upgrade' });
+  await wait(reduced ? 0 : 520);
   if (drinksInCart() === 0 && S.drinkAsked < 2) { S.drinkAsked++; openDrinks(shown); }
   else { closeSheet(); toast(`${shown.nome} na comanda`); }
 }
@@ -486,21 +523,21 @@ function familyDeal() {
 function openDrinks(p) {
   openSheet(() => {
     const deal = familyDeal(), has = drinksInCart();
-    return `<div class="up-head"><small>✓ ${p ? esc(p.nome) + ' na comanda' : 'na comanda'}</small>
-        <h3>E pra molhar<br>a goela?</h3><p>Prensado pede gelada. Toca pra levar junto.</p></div>
+    return `<div class="up-head"><small>✓ ${p ? esc(p.nome) + ' na comanda' : 'Na comanda'}</small>
+        <h3>E pra beber?</h3><p>Prensado pede gelada. Toca pra levar junto.</p></div>
       <div class="fridge up-fridge"><div class="shelf">${upsellDrinks().map(d => bevHTML(d, 'upsell')).join('')}</div></div>
       ${deal ? `<button class="deal" onclick="addDrink('${deal.big.id}','upsell')"><span class="deal-txt"><b>Pra galera: ${esc(deal.big.nome)}</b>${deal.save > 0 ? `sai mais em conta que ${deal.n} latas, <em>economiza ${fmt(deal.save)}</em>` : `dá pra todo mundo por ${fmt(deal.big.preco)}`}</span><span class="deal-add">+ ${short(deal.big.preco)}</span></button>` : ''}
       <div class="actions">
         ${has ? `<button class="btn" onclick="openReceipt()"><span>Ver comanda</span><span>${short(subtotal())}</span></button>` : ''}
-        <button class="btn ${has ? 'cream' : 'ghost'} center" onclick="closeSheet()">${has ? 'Voltar pro cardápio' : 'Tô de boa, sem bebida'}</button>
+        <button class="btn ${has ? 'light' : 'ghost'} center" onclick="closeSheet()">${has ? 'Continuar escolhendo' : 'Agora não'}</button>
       </div>`;
   });
 }
 function openWater(p, origem) {
-  openSheet(() => `<div class="up-head"><small>${esc(p.nome)}</small><h3>Com ou<br>sem gás?</h3></div>
+  openSheet(() => `<div class="up-head"><small>${esc(p.nome)}</small><h3>Com ou sem gás?</h3></div>
     <div class="actions">
       <button class="btn center" onclick="addLine({id:'${p.id}',obs:'Sem gás',origem:'${origem}'});buzz();toast('Água na comanda');closeSheet()">Sem gás</button>
-      <button class="btn cream center" onclick="addLine({id:'${p.id}',obs:'Com gás',origem:'${origem}'});buzz();toast('Água na comanda');closeSheet()">Com gás</button>
+      <button class="btn light center" onclick="addLine({id:'${p.id}',obs:'Com gás',origem:'${origem}'});buzz();toast('Água na comanda');closeSheet()">Com gás</button>
     </div>`);
 }
 
@@ -510,14 +547,14 @@ function suggestions() {
   const out = [];
   if (drinksInCart() === 0) {
     const d = upsellDrinks().slice(0, 4);
-    if (d.length) out.push(`<div class="rc-sug"><div class="rc-sug-txt"><b>Faltou a gelada</b>Um toque e vai junto.</div>
+    if (d.length) out.push(`<div class="rc-sug"><div class="rc-sug-txt"><b>Faltou a bebida</b>Um toque e vai junto.</div>
       <div class="rc-mini">${d.map(x => `<button onclick="addLine({id:'${x.id}',origem:'bump'});buzz();refreshSheet()">${esc(bevLook(x).label)} lata · ${short(x.preco)}</button>`).join('')}</div></div>`);
   }
   const cand = S.cart.find(l => { const p = S.byId.get(l.id), u = p?.upgrade_para && S.byId.get(p.upgrade_para); return l.origem !== 'upgrade' && isLanche(p) && u?.disponivel; });
   if (cand) {
     const p = S.byId.get(cand.id), u = S.byId.get(p.upgrade_para), extra = u.ing.filter(i => !p.ing.includes(i));
-    out.push(`<div class="rc-sug"><div class="rc-sug-art">${art(u)}</div><div class="rc-sug-txt"><b>Turbina o ${esc(p.nome)}?</b>Vira ${esc(u.nome)}${extra.length ? ' (+ ' + esc(extra.join(', ')) + ')' : ''} por + ${fmt(u.preco - p.preco)}${cand.qty > 1 ? ' cada' : ''}.</div>
-      <button class="rc-sug-btn" onclick="upgradeLine('${cand.key}')">⚡ Turbinar</button></div>`);
+    out.push(`<div class="rc-sug"><div class="rc-sug-txt"><b>Turbina o ${esc(p.nome)}?</b>Vira ${esc(u.nome)}${extra.length ? ' (+ ' + esc(extra.join(', ')) + ')' : ''} por + ${fmt(u.preco - p.preco)}${cand.qty > 1 ? ' cada' : ''}.</div>
+      <button class="rc-sug-btn" onclick="upgradeLine('${cand.key}')">Turbinar</button></div>`);
   }
   const deal = familyDeal();
   if (deal && drinksInCart() > 0 && out.length < 2) out.push(`<div class="rc-sug"><div class="rc-sug-txt"><b>Pra galera</b>${esc(deal.big.nome)} por ${fmt(deal.big.preco)}.</div><button class="rc-sug-btn" onclick="addLine({id:'${deal.big.id}',origem:'bump'});buzz();refreshSheet()">+ Levar</button></div>`);
@@ -551,7 +588,7 @@ function receiptView() {
   return `<div class="receipt">
       <div class="rc-head"><b>Comanda</b><span>ADRIANO LANCHES · ${now}</span></div>
       ${S.cart.map(l => { const p = S.byId.get(l.id); if (!p) return ''; const o = lineObs(l);
-        return `<div class="rc-item"><div class="rc-art">${thumb(p)}</div>
+        return `<div class="rc-item"><div class="rc-thumb">${media(p)}</div>
           <div class="rc-name">${l.qty}x ${esc(p.nome)}</div><div class="rc-price">${fmt(p.preco * l.qty)}</div>
           ${o ? `<div class="rc-obs">${esc(o)}</div>` : ''}
           <div class="rc-ctrl"><button onclick="changeLine('${l.key}',-1)" aria-label="Menos">−</button><span>${l.qty}</span><button onclick="changeLine('${l.key}',1)" aria-label="Mais">+</button><span class="unit">${fmt(p.preco)} un.</span></div></div>`; }).join('')}
@@ -586,13 +623,13 @@ function checkoutView() {
   const label = { pix: 'PIX', dinheiro: 'Dinheiro', cartao: 'Cartão' };
   const pixNote = c.chave_pix ? 'Depois de confirmar, aparece o QR Code e o copia e cola com o valor certinho.' : 'Paga no PIX na hora da entrega ou da retirada.';
   return `<div class="co dark">
-      <button class="co-back" onclick="openReceipt()">← voltar pra comanda</button>
-      <h3>Quase lá.<br>Só falta isso.</h3>
-      ${st.open ? '' : `<div class="closed">A loja está ${esc(st.text)}. Sua comanda fica salva até abrir.</div>`}
-      <div class="co-sec"><span class="co-label">quem tá pedindo</span>
+      <button class="co-back" onclick="openReceipt()">← Voltar pra comanda</button>
+      <h3>Quase lá</h3>
+      ${st.open ? '' : `<div class="closed">${esc(st.text)}. Sua comanda fica salva até abrir.</div>`}
+      <div class="co-sec"><span class="co-label">Quem tá pedindo</span>
         <input class="field" id="coNome" autocomplete="name" placeholder="Seu nome" value="${esc(cli.nome || '')}">
         <input class="field" id="coTel" type="tel" inputmode="numeric" autocomplete="tel" placeholder="WhatsApp com DDD" value="${esc(cli.tel || '')}" oninput="this.value=maskTel(this.value)"></div>
-      <div class="co-sec"><span class="co-label">como recebe</span>
+      <div class="co-sec"><span class="co-label">Como recebe</span>
         <div class="modes" style="margin:0">
           <button class="seg ${S.mode === 'delivery' ? 'on' : ''}" onclick="keepForm();setMode('delivery')">Entrega<small>+ ${short(c.taxa_entrega || 0)}</small></button>
           <button class="seg ${S.mode === 'retirada' ? 'on' : ''}" onclick="keepForm();setMode('retirada')">Retirada<small>sem taxa</small></button>
@@ -601,12 +638,12 @@ function checkoutView() {
           <input class="field" id="coBairro" placeholder="Bairro" value="${esc(cli.bairro || '')}">
           <input class="field" id="coComp" placeholder="Complemento / referência" value="${esc(cli.comp || '')}">`
         : `<div class="note">Retire em <b>${esc(c.endereco || '')}</b></div>`}</div>
-      <div class="co-sec"><span class="co-label">pagamento</span>
+      <div class="co-sec"><span class="co-label">Pagamento</span>
         <div class="pays">${formas.map(f => `<button class="seg ${S.pay === f ? 'on' : ''}" onclick="keepForm();S.pay='${f}';refreshSheet()">${label[f]}</button>`).join('')}</div>
         ${S.pay === 'dinheiro' ? `<input class="field" id="coTroco" inputmode="decimal" placeholder="Troco pra quanto? (opcional)" value="${esc(cli.troco || '')}">` : ''}
         ${S.pay === 'pix' ? `<div class="note">${pixNote}</div>` : ''}
         ${S.pay === 'cartao' ? `<div class="note">A maquininha vai até você (ou fica no balcão).</div>` : ''}</div>
-      <div class="co-sec"><span class="co-label">observação do pedido</span>
+      <div class="co-sec"><span class="co-label">Observação do pedido</span>
         <textarea class="field" id="coObs" maxlength="300" placeholder="Opcional">${esc(cli.obsPedido || '')}</textarea></div>
       <div class="co-sum">
         <div class="rc-row"><span>${count()} ${count() === 1 ? 'item' : 'itens'}</span><span>${fmt(subtotal())}</span></div>
@@ -615,7 +652,7 @@ function checkoutView() {
       </div>
       <p class="err" id="coErr"></p>
     </div>
-    <div class="foot-bar"><button class="btn" id="coBtn" onclick="placeOrder()" ${st.open ? '' : 'disabled'}><span>${st.open ? 'Mandar pra chapa' : 'Loja fechada'}</span><span>${short(total())}</span></button></div>`;
+    <div class="foot-bar"><button class="btn" id="coBtn" onclick="placeOrder()" ${st.open ? '' : 'disabled'}><span>${st.open ? 'Fazer pedido' : 'Loja fechada'}</span><span>${short(total())}</span></button></div>`;
 }
 function keepForm() {
   const cli = { ...(store.get('adl_cliente') || {}) };
@@ -640,7 +677,7 @@ async function placeOrder() {
   };
   const itens = S.cart.map(l => ({ produto_id: l.id, quantidade: l.qty, observacao: lineObs(l) || null, origem: l.origem }));
   const { data, error } = await supa.rpc('criar_pedido', { p_loja_slug: LOJA_SLUG, p_pedido: pedido, p_itens: itens });
-  if (error) { btn.disabled = false; btn.firstElementChild.textContent = 'Mandar pra chapa'; return err(error.message || 'Não deu pra enviar. Tenta de novo?'); }
+  if (error) { btn.disabled = false; btn.firstElementChild.textContent = 'Fazer pedido'; return err(error.message || 'Não deu pra enviar. Tenta de novo?'); }
   store.set('adl_cliente', { ...cli, mode: S.mode, pay: S.pay, obsPedido: '' });
   store.set('adl_ultimo', { at: Date.now(), itens: S.cart.map(l => ({ id: l.id, qty: l.qty, remove: l.remove, obs: l.obs })), total: data.total });
   store.set('adl_pedido', { token: data.token, numero: data.numero, at: Date.now() });
@@ -670,7 +707,7 @@ function pixHTML() {
   const code = Pix.code({ key: c.chave_pix, name: S.loja.nome, city: (c.endereco || '').split(',').pop().split('/')[0] || 'Umuarama', amount: TD.total, txid: 'PED' + TD.numero });
   return `<div class="pix"><h4>Paga no PIX agora</h4><p>Escaneia ou copia o código. O valor já vem certinho.</p>
     <div class="pix-qr">${Pix.qrSVG(code)}</div><div class="pix-val">${fmt(TD.total || 0)}</div>
-    <button class="btn cream center" onclick="copyPix(this)" data-code="${esc(code)}">Copiar código PIX</button>
+    <button class="btn light center" onclick="copyPix(this)" data-code="${esc(code)}">Copiar código PIX</button>
     <div class="pix-code">${esc(code)}</div>
     ${TD.pix_informado ? '<span class="pix-ok pix-wait">Avisamos a loja. Ela confere e confirma aqui.</span>'
       : `<button class="btn center" style="margin-top:10px;width:100%" onclick="informarPix(this)">Já paguei</button>`}</div>`;
@@ -688,7 +725,7 @@ async function informarPix(btn) {
 }
 function trackView() {
   const d = TD, ret = d.tipo_entrega === 'retirada';
-  const steps = [['🧾', 'Pedido recebido'], ['🔥', 'Na chapa'], [ret ? '🛎️' : '🛵', ret ? 'Pronto pra retirar' : 'Saiu pra entrega'], ['✓', ret ? 'Retirado' : 'Entregue']];
+  const steps = [['1', 'Pedido recebido'], ['2', 'Na chapa'], ['3', ret ? 'Pronto pra retirar' : 'Saiu pra entrega'], ['4', ret ? 'Retirado' : 'Entregue']];
   const cur = { novo: 0, preparo: 1, pronto: 2, entrega: 2, finalizado: 3 }[d.status] ?? 0;
   const num = '#' + String(d.numero).padStart(3, '0');
   if (d.status === 'cancelado') return `<div class="track"><div class="stamp" style="border-color:var(--muted);color:var(--muted)">Cancelado<small>${num}</small></div><p>A loja cancelou esse pedido. Chama no WhatsApp se tiver dúvida.</p><div class="actions"><button class="btn center" onclick="clearActive();closeSheet()">Fechar</button></div></div>`;
@@ -696,9 +733,9 @@ function trackView() {
     <div class="stamp" ${d.fresh ? '' : 'style="animation:none"'}>${cur >= 3 ? 'Entregue' : 'Recebido'}<small>pedido ${num}</small></div>
     <p>${cur >= 3 ? 'Valeu demais. Bom apetite!' : 'Pode fechar: o status aparece aqui em cima.'}</p>
     ${pixHTML()}
-    <ol class="steps">${steps.map(([ico, txt], i) => `<li class="${i < cur || cur === 3 ? 'done' : i === cur ? 'now' : ''}"><i>${i < cur || cur === 3 ? '✓' : ico}</i>${txt}</li>`).join('')}</ol>
+    <ol class="steps">${steps.map(([n, txt], i) => `<li class="${i < cur || cur === 3 ? 'done' : i === cur ? 'now' : ''}"><i>${i < cur || cur === 3 ? '✓' : n}</i>${txt}</li>`).join('')}</ol>
     ${d.itens?.length ? `<div class="track-items">${d.itens.map(i => `${i.qtd}x ${esc(i.nome)}`).join('<br>')}<br><b>total ${fmt(d.total)}</b></div>` : ''}
-    <div class="actions"><button class="btn ${cur >= 3 ? '' : 'cream'} center" onclick="${cur >= 3 ? 'clearActive();' : ''}closeSheet()">${cur >= 3 ? 'Fechar' : 'Voltar pro cardápio'}</button></div>
+    <div class="actions"><button class="btn ${cur >= 3 ? '' : 'light'} center" onclick="${cur >= 3 ? 'clearActive();' : ''}closeSheet()">${cur >= 3 ? 'Fechar' : 'Voltar pro cardápio'}</button></div>
   </div>`;
 }
 function clearActive() { store.del('adl_pedido'); renderLive(); }
@@ -727,15 +764,24 @@ let toastT;
 function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2200); }
 
 // ── Início ─────────────────────────────────────────────────
+// a entrada só começa quando a foto do hero estiver pronta (ou em 1,4s)
+function ready() {
+  if (document.body.classList.contains('ready')) return;
+  const img = $('heroImg');
+  const go = () => document.body.classList.add('ready');
+  if (img.complete && img.naturalWidth) return go();
+  img.addEventListener('load', go, { once: true });
+  setTimeout(go, 1400);
+}
 (async function init() {
   const cache = store.get('adl2_menu');
-  if (cache?.loja) { applyMenu(cache.loja, cache.cats || [], cache.prods || []); syncCart(); renderAll(); }
+  if (cache?.loja) { applyMenu(cache.loja, cache.cats || [], cache.prods || []); syncCart(); renderAll(); ready(); }
   try {
     await Promise.all([loadMenu(), loadSocial()]);
-    syncCart(); renderAll(); subscribe(); checkActive();
+    syncCart(); renderAll(); ready(); subscribe(); checkActive();
     setInterval(renderStatus, 60000);
   } catch (e) {
-    console.error(e);
+    console.error(e); ready();
     if (!cache) $('menu').innerHTML = '<div class="empty" style="padding:60px 16px"><b>Sem conexão</b><p>Recarrega em alguns segundos.</p></div>';
   }
 })();
