@@ -9,4 +9,4 @@ const SUPABASE_CONFIG = {
 const LOJA_SLUG = 'adriano-lanches';
 
 // Link da engrenagem no rodapé (painel do restaurante). Vazio = engrenagem escondida.
-const PAINEL_URL = 'https://adriano-lanches-painel.vercel.app';
+const PAINEL_URL = 'https://painel-adriano.vercel.app';
