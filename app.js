@@ -66,7 +66,8 @@ function bevLook(p) {
   return { shape, c, c2, label };
 }
 const canHTML = p => { const l = bevLook(p); return `<div class="can ${l.shape}" style="--c:${l.c};--c2:${l.c2}"><span>${esc(l.label)}</span></div>`; };
-const thumb = p => isDrink(p) ? `<div style="transform:scale(.48);transform-origin:center bottom;display:flex;justify-content:center;height:100%;align-items:flex-end">${canHTML(p)}</div>` : art(p);
+const thumb = p => isDrink(p) ? `<div style="transform:scale(.48);transform-origin:center bottom;display:flex;justify-content:center;height:100%;align-items:flex-end">${canHTML(p)}</div>`
+  : p.foto_url ? `<img class="thumb-photo" src="${esc(p.foto_url)}" alt="" loading="lazy">` : art(p);
 
 // ── Carregamento ───────────────────────────────────────────
 async function loadMenu() {
@@ -121,8 +122,13 @@ function lojaStatus() {
 }
 
 // ── Render geral ───────────────────────────────────────────
+function renderStrip() {
+  const fotos = S.prods.filter(p => p.foto_url && p.disponivel);
+  $('strip').hidden = !fotos.length;
+  $('stripTrack').innerHTML = [...fotos, ...fotos].map(p => `<button class="strip-item" onclick="openItem('${p.id}')"><img src="${esc(p.foto_url)}" alt="${esc(p.nome)}" loading="lazy"><span>${esc(p.nome)}<b>${short(p.preco)}</b></span></button>`).join('');
+}
 function renderAll(withHero = true) {
-  renderStatus(); if (withHero) renderHero(); renderTabs(); renderMenu(); renderAgain(); updateTray();
+  renderStatus(); renderStrip(); if (withHero) renderHero(); renderTabs(); renderMenu(); renderAgain(); updateTray();
 }
 function renderStatus() {
   const st = lojaStatus(), c = S.loja.config || {};
@@ -149,6 +155,7 @@ function renderHero() {
   $('heroPriceLabel').textContent = `um ${shortName(p)} sai por`;
   $('heroPrice').textContent = short(p.preco);
   $('heroStack').innerHTML = art(p, { labels: true });
+  $('heroPhoto').innerHTML = p.foto_url ? `<img src="${esc(p.foto_url)}" alt="${esc(p.nome)}"><span class="mono">foto real · saindo da chapa</span>` : '';
   $('heroBtn').onclick = () => openItem(p.id);
   $('heroBtn').textContent = 'Quero esse';
   heroScroll();
@@ -183,6 +190,7 @@ function heroScroll() {
   stage.style.setProperty('--heat', clamp((p - .55) / .3).toFixed(2));
   $('steam').classList.toggle('on', p > .6);
   hero.classList.toggle('done', p > .7);
+  hero.classList.toggle('reveal', p > .9 && !!S.hero?.foto_url);
   hero.classList.toggle('moving', p > .02);
 }
 addEventListener('scroll', () => {
@@ -215,7 +223,7 @@ function cardHTML(p, k, wide) {
   const ing = p.ing.filter(i => !/^p[aã]o$/.test(i)).map(i => common.has(i) ? esc(i) : `<b>${esc(i)}</b>`).join(', ');
   const q = qtyOf(p.id);
   return `<article class="card ${wide ? 'wide' : ''} ${p.disponivel ? '' : 'off'}" style="--k:${k}" onclick="openItem('${p.id}')">
-    <div class="card-stage">${stickers(p)}${p.foto_url ? '<span class="photo-tag">foto</span>' : ''}${art(p)}</div>
+    <div class="card-stage ${p.foto_url ? 'has-photo' : ''}">${stickers(p)}${p.foto_url ? `<img class="card-photo" src="${esc(p.foto_url)}" alt="${esc(p.nome)}" loading="lazy"><span class="xray" title="ver por dentro">${art(p)}</span>` : art(p)}</div>
     <div class="card-body">
       <h3 class="card-name">${esc(p.nome)}</h3>
       ${ing ? `<p class="card-ing">${ing}</p>` : ''}
@@ -229,7 +237,7 @@ function renderMenu() {
     const list = S.prods.filter(p => p.categoria_id === c.id);
     if (!list.length) return '';
     if (c.slug === 'bebidas') return renderFridge(c, list);
-    const feat = list.filter(p => p.destaque && p.disponivel).sort((a, b) => b.ing.length - a.ing.length)[0];
+    const feat = list.filter(p => p.destaque && p.disponivel).sort((a, b) => (!!b.foto_url - !!a.foto_url) || b.ing.length - a.ing.length)[0];
     const rest = list.filter(p => p !== feat);
     return `<section class="cat" id="cat-${c.id}">
       <div class="cat-head"><h2>${esc(c.nome)}</h2><p>${list.length} na chapa</p></div>
@@ -389,7 +397,7 @@ let IT = null;
 function openItem(id) {
   const p = S.byId.get(id); if (!p) return;
   if (isDrink(p)) return addDrink(id, 'cardapio');
-  IT = { id, remove: new Set(), turbo: false, qty: 1, obs: '', obsOpen: false, show: 'inside', anim: 'build', hl: [] };
+  IT = { id, remove: new Set(), turbo: false, qty: 1, obs: '', obsOpen: false, show: p.foto_url ? 'photo' : 'inside', anim: 'build', hl: [] };
   openSheet(itemView);
 }
 const itShown = () => { const p = S.byId.get(IT.id), up = p.upgrade_para && S.byId.get(p.upgrade_para); return IT.turbo && up?.disponivel ? up : p; };
@@ -404,7 +412,7 @@ function itemView() {
   return `
     <div class="it-stage" id="itStage">
       <button class="it-close" onclick="closeSheet()" aria-label="Fechar">✕</button>
-      ${shown.foto_url ? `<div class="it-view"><button class="${photo ? '' : 'on'}" onclick="itShow('inside')">por dentro</button><button class="${photo ? 'on' : ''}" onclick="itShow('photo')">foto real</button></div>` : ''}
+      ${shown.foto_url ? `<div class="it-view"><button class="${photo ? 'on' : ''}" onclick="itShow('photo')">foto</button><button class="${photo ? '' : 'on'}" onclick="itShow('inside')">por dentro</button></div>` : ''}
       <div class="press"><span></span></div>
       ${photo ? `<img class="photo" src="${esc(shown.foto_url)}" alt="${esc(shown.nome)}">` : stage}
     </div>
@@ -434,6 +442,7 @@ async function animateOut(ings) {
 }
 async function toggleIng(i) {
   buzz();
+  if (IT.show === 'photo') { IT.show = 'inside'; IT.anim = 'none'; }
   if (IT.remove.has(i)) { IT.remove.delete(i); IT.hl = [i]; }
   else { IT.remove.add(i); if (IT.show === 'inside') await animateOut([i]); }
   refreshSheet();
@@ -442,6 +451,7 @@ async function toggleTurbo() {
   const p = S.byId.get(IT.id), up = S.byId.get(p.upgrade_para);
   const extra = up.ing.filter(i => !p.ing.includes(i));
   buzz(15);
+  if (IT.show === 'photo') { IT.show = 'inside'; IT.anim = 'none'; }
   if (!IT.turbo) { IT.turbo = true; IT.hl = extra; }
   else { if (IT.show === 'inside') await animateOut(extra); IT.turbo = false; }
   refreshSheet();

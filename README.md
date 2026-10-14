@@ -10,7 +10,7 @@ HTML, CSS e JavaScript puros, sem build. O backend é o Supabase (projeto CARDAP
 |---|---|
 | `index.html` | Estrutura da página |
 | `style.css` | Visual "Na Chapa": chapa de aço quente, papel de comanda |
-| `stack.js` | Desenha o lanche em corte lateral a partir da descrição ("Pão, salsicha, bacon e catupiry.") |
+| `stack.js` | Desenha o lanche em corte lateral a partir da descrição ("Pão, salsicha, bacon e catupiry."). Usado nos produtos sem foto e no "por dentro" |
 | `pix.js` | Gera o PIX copia e cola (BR Code estático do Banco Central) e o QR Code |
 | `app.js` | Cardápio, montagem, carrinho, sugestões, checkout, PIX e acompanhamento |
 | `config.js` | URL e chave pública do Supabase, slug da loja, link do painel |
@@ -27,7 +27,7 @@ Produto novo cadastrado no painel ganha desenho sozinho, desde que a descrição
 - **Hero:** a anatomia do lanche mais pedido. Ao rolar, as camadas se juntam, a prensa desce e solta vapor.
 - **Montar:** tirar um ingrediente faz a camada sair do desenho. Turbinar faz as camadas novas caírem.
 - **Prensar e pedir:** a prensa desce no lanche antes de ir para a comanda.
-- **Foto real:** produtos com foto mostram a opção "por dentro / foto real".
+- **Fotos reais:** produto com foto aparece com a foto no cartão (com mini raio-x no canto), abre na foto e troca pro desenho ao mexer nos ingredientes. A faixa "Direto da chapa" mostra todas as fotos, e o hero termina na foto real do lanche.
 
 ## Mecanismos de ticket médio
 
