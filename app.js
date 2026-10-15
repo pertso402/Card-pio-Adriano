@@ -34,8 +34,9 @@ function ingredientes(desc) {
   return desc.replace(/\.\s*$/, '').split(/,\s*|\s+e\s+/).map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 const catOf = p => S.cats.find(c => c.id === p.categoria_id);
-const isDrink = p => catOf(p)?.slug === 'bebidas';
-const isLanche = p => p && !isDrink(p);
+const isDrink = p => (catOf(p)?.slug || '').startsWith('bebidas');
+const isLanche = p => p && !isDrink(p) && catOf(p)?.slug !== 'molhos';
+const isAlcohol = p => catOf(p)?.slug === 'bebidas-alcoolicas';
 const drinksInCart = () => S.cart.filter(l => isDrink(S.byId.get(l.id) || {})).reduce((s, l) => s + l.qty, 0);
 const lanchesInCart = () => S.cart.filter(l => isLanche(S.byId.get(l.id))).reduce((s, l) => s + l.qty, 0);
 const findProd = re => S.prods.find(p => p.disponivel && re.test(p.nome));
@@ -45,7 +46,7 @@ function bevLook(p) {
   let shape = 'lata';
   if (/\b2l\b/.test(n)) shape = 'pet2';
   else if (/600/.test(n)) shape = 'pet';
-  else if (/ks|290|long/.test(n)) shape = 'ks';
+  else if (/ks|290|long|355/.test(n)) shape = 'ks';
   else if (/900|suco/.test(n)) shape = 'box';
   else if (/monster|energ/.test(n)) shape = 'tall';
   else if (/h2o|água|agua/.test(n)) shape = 'pet';
@@ -59,7 +60,14 @@ function bevLook(p) {
     [/monster|energ/, zero ? ['#E6E6E6', '#111', 'Monster Zero'] : ['#111', '#7AC943', 'Monster']],
     [/h2o/, ['#BFE6F5', '#0E6E9C', 'H2O']],
     [/água|agua/, ['#CFEFFF', '#1F6E9A', 'Água']],
-    [/prats/, ['#FF9A1F', '#fff', 'Prats']],
+    [/suco/, ['#FF9A1F', '#fff', 'Suco']],
+    [/heineken/, ['#0B6E3B', '#fff', 'Heineken']],
+    [/stella/, ['#EFE6D2', '#C8102E', 'Stella']],
+    [/budweiser/, ['#C8102E', '#fff', 'Budweiser']],
+    [/\bsol\b/, ['#F2C200', '#1B4D9C', 'Sol']],
+    [/brahma/, ['#C8102E', '#fff', 'Brahma']],
+    [/skol/, ['#FFD100', '#C8102E', 'Skol']],
+    [/antarctica boa/, ['#1C4FA0', '#fff', 'Antarctica']],
     [/festy/, ['#FFB300', '#7A2E00', 'Festy']],
   ].find(([re]) => re.test(n));
   const [c, c2, label] = look ? look[1] : ['#888', '#fff', p.nome.split(' ')[0]];
@@ -191,7 +199,7 @@ function renderBrabos() {
     </button>`).join('');
 }
 
-const catShort = c => ({ 'prensados-salsicha': 'Salsicha', 'lanches-hamburguer': 'Burger', bebidas: 'Geladas' }[c.slug] || c.nome);
+const catShort = c => ({ 'prensados-salsicha': 'Salsicha', 'lanches-hamburguer': 'Burger', vegetarianos: 'Veggie', molhos: 'Molho', bebidas: 'Geladas', 'bebidas-alcoolicas': 'Cervejas' }[c.slug] || c.nome);
 function renderTabs() {
   $('tabs').innerHTML = `<div class="tabs-inner">${S.cats.map((c, i) =>
     `<button class="tab ${i === 0 ? 'active' : ''}" data-cat="${c.id}" onclick="goCat('${c.id}')">${esc(catShort(c))}<sup>${S.prods.filter(p => p.categoria_id === c.id && p.disponivel).length}</sup></button>`).join('')}</div>`;
@@ -206,7 +214,7 @@ function renderMenu() {
   $('menu').innerHTML = S.cats.map(c => {
     const list = S.prods.filter(p => p.categoria_id === c.id);
     if (!list.length) return '';
-    if (c.slug === 'bebidas') return renderFridge(c, list);
+    if (c.slug.startsWith('bebidas')) return renderFridge(c, list);
     const common = S.common[c.id] || new Set();
     return `<section class="cat" id="cat-${c.id}">
       <div class="cat-head"><h2>${esc(c.nome)}</h2><span>${list.length} opções</span></div>
@@ -238,6 +246,7 @@ function renderMenu() {
 }
 
 function shelfOf(p) {
+  if (isAlcohol(p)) return bevLook(p).shape === 'ks' ? 'Long neck' : 'Latas';
   const s = bevLook(p).shape;
   if (s === 'lata') return 'Latinhas 350ml';
   if (s === 'ks') return 'Garrafinhas';
@@ -255,11 +264,11 @@ function bevHTML(p, origem = 'cardapio') {
   </button>`;
 }
 function renderFridge(c, list) {
-  const order = ['Latinhas 350ml', 'Garrafinhas', '600ml', '2 litros · pra galera', 'Sucos & energéticos', 'Águas'];
+  const order = ['Latinhas 350ml', 'Garrafinhas', '600ml', 'Sucos & energéticos', 'Águas', 'Long neck', 'Latas'];
   const groups = {};
   list.filter(p => p.disponivel).forEach(p => (groups[shelfOf(p)] ||= []).push(p));
   return `<section class="cat" id="cat-${c.id}">
-    <div class="cat-head"><h2>A geladeira</h2><span>toque pra pegar</span></div>
+    <div class="cat-head"><h2>${c.slug === 'bebidas-alcoolicas' ? 'Cervejas' : 'A geladeira'}</h2><span>${c.slug === 'bebidas-alcoolicas' ? 'proibido para menores de 18' : 'toque pra pegar'}</span></div>
     <p class="cat-note">Tudo trincando. Toca na bebida que ela vai pra comanda.</p>
     <div class="fridge">
       ${order.filter(g => groups[g]).map(g => `<div class="shelf-label">${g}</div><div class="shelf">${groups[g].map(p => bevHTML(p)).join('')}</div>`).join('')}
@@ -439,6 +448,7 @@ let IT = null;
 function openItem(id) {
   const p = S.byId.get(id); if (!p) return;
   if (isDrink(p)) return addDrink(id, 'cardapio');
+  if (!isLanche(p)) return quickAdd(id);
   IT = { id, remove: new Set(), upgrade: false, qty: 1, obs: '', obsOpen: false };
   openSheet(itemView);
 }
