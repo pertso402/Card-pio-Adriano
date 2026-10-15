@@ -486,3 +486,15 @@ textarea.field { resize: vertical; min-height: 72px; }
 .rc-thumb svg, .tray-thumbs svg { overflow: visible; }
 .foot-links { display: flex; justify-content: center; gap: 16px; margin-top: 12px !important; font-size: .86rem !important; }
 .foot-links a { color: var(--yellow); text-decoration: none; font-weight: 700; }
+
+/* ── PIX: passos + comprovante pelo WhatsApp ── */
+.pix-steps { list-style: none; display: flex; justify-content: center; gap: 6px; margin-bottom: 14px; counter-reset: s; }
+.pix-steps li { counter-increment: s; font-size: .7rem; font-weight: 700; color: #a08b78; display: flex; align-items: center; gap: 5px; }
+.pix-steps li::before { content: counter(s); width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: #EADBC8; color: #6d5848; font-size: .66rem; }
+.pix-steps li + li::after { order: -1; content: ''; width: 10px; height: 1px; background: #D5C2AC; }
+.pix-steps li.now { color: var(--ink); } .pix-steps li.now::before { background: var(--ink); color: var(--paper); }
+.pix-steps li.ok { color: #13753A; } .pix-steps li.ok::before { content: '✓'; background: #13753A; color: #fff; }
+.pix-to { font-size: .78rem !important; color: #6d5848; margin-top: 2px !important; }
+.btn.wa { background: #1FAF5A; box-shadow: 0 10px 24px -8px rgba(31, 175, 90, .6); gap: 8px; justify-content: center; }
+.pix-hint { font-size: .74rem !important; color: #8a7462 !important; margin-top: 8px !important; }
+.pix-link { margin-top: 8px; font-size: .8rem; font-weight: 700; color: #13753A; text-decoration: underline; text-underline-offset: 3px; }

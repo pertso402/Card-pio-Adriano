@@ -677,7 +677,7 @@ function checkoutView() {
   const cli = store.get('adl_cliente') || {}, st = lojaStatus(), c = S.loja.config || {};
   const formas = c.formas_pagamento || ['pix', 'dinheiro', 'cartao'];
   const label = { pix: 'PIX', dinheiro: 'Dinheiro', cartao: 'Cartão' };
-  const pixNote = c.chave_pix ? 'Depois de confirmar, aparece o QR Code e o copia e cola com o valor certinho.' : 'Paga no PIX na hora da entrega ou da retirada.';
+  const pixNote = c.chave_pix ? 'Logo depois de fazer o pedido aparece o QR e o copia e cola com o valor certinho. Pagou, é só mandar o comprovante no WhatsApp com um toque.' : 'Paga no PIX na hora da entrega ou da retirada.';
   return `<div class="co dark">
       <button class="co-back" onclick="openReceipt()">← Voltar pra comanda</button>
       <h3>Quase lá</h3>
@@ -761,12 +761,32 @@ function pixHTML() {
   if (TD.pago) return `<div class="pix"><h4>PIX recebido</h4><span class="pix-ok">✓ Pagamento confirmado pela loja</span></div>`;
   if (!c.chave_pix) return `<div class="pix"><h4>Pagamento no PIX</h4><p>Você paga na entrega ou na retirada. O valor é ${fmt(TD.total || 0)}.</p></div>`;
   const code = Pix.code({ key: c.chave_pix, name: S.loja.nome, city: (c.endereco || '').split(',').pop().split('/')[0] || 'Umuarama', amount: TD.total, txid: 'PED' + TD.numero });
-  return `<div class="pix"><h4>Paga no PIX agora</h4><p>Escaneia ou copia o código. O valor já vem certinho.</p>
-    <div class="pix-qr">${Pix.qrSVG(code)}</div><div class="pix-val">${fmt(TD.total || 0)}</div>
+  const sent = TD.pix_informado;
+  return `<div class="pix">
+    <ol class="pix-steps"><li class="${sent ? 'ok' : 'now'}">Paga</li><li class="${sent ? 'now' : ''}">Manda o comprovante</li><li>A loja confirma</li></ol>
+    ${sent ? '' : `<h4>Paga no PIX agora</h4><p>Escaneia o QR ou copia o código. O valor já vem certinho.</p>
+    <div class="pix-qr">${Pix.qrSVG(code)}</div>`}
+    <div class="pix-val">${fmt(TD.total || 0)}</div>
+    <p class="pix-to">Para <b>${esc(S.loja.nome)}</b> · chave ${esc(pixKeyLabel(c.chave_pix))}</p>
     <button class="btn light center" onclick="copyPix(this)" data-code="${esc(code)}">Copiar código PIX</button>
-    <div class="pix-code">${esc(code)}</div>
-    ${TD.pix_informado ? '<span class="pix-ok pix-wait">Avisamos a loja. Ela confere e confirma aqui.</span>'
-      : `<button class="btn center" style="margin-top:10px;width:100%" onclick="informarPix(this)">Já paguei</button>`}</div>`;
+    ${sent
+      ? `<span class="pix-ok pix-wait">Comprovante enviado. Assim que a loja conferir, aparece "confirmado" aqui.</span>
+         <button class="pix-link" onclick="sendProof(true)">Abrir o WhatsApp de novo</button>`
+      : `<button class="btn wa center" style="margin-top:10px;width:100%" onclick="sendProof()">${WA_ICON} Já paguei · enviar comprovante</button>
+         <p class="pix-hint">Abre o WhatsApp da loja com o número do pedido. É só anexar o print do PIX.</p>`}
+  </div>`;
+}
+const WA_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.2 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .1-3.3-.8-2.8-1.1-4.5-3.9-4.7-4.1-.1-.2-1.1-1.5-1.1-2.9 0-1.4.7-2 1-2.3.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.4 0 .5l-.3.5-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.1 1 2.1 1.3 2.4 1.5.3.1.5.1.7-.1l.9-1.1c.2-.3.4-.2.7-.1l1.8.9c.3.1.5.2.5.3.1.2.1.7-.1 1.3Z"/></svg>';
+// chave de celular (+55...) aparece formatada; as outras, como estão
+const pixKeyLabel = k => String(k || '').startsWith('+55') ? telBR(k) : k;
+// marca o pedido como "comprovante enviado" e abre o WhatsApp da loja com a mensagem pronta
+async function sendProof(again = false) {
+  const c = S.loja.config || {};
+  const num = '#' + String(TD.numero).padStart(3, '0');
+  const msg = `Oi! Paguei o PIX do pedido ${num} (${fmt(TD.total || 0)}). Segue o comprovante:`;
+  if (c.whatsapp) window.open(`https://wa.me/${String(c.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+  if (!again && !TD.pix_informado) { await supa.rpc('informar_pix', { p_token: trackToken }); TD.pix_informado = true; refreshSheet(); renderLive(); }
+  buzz();
 }
 async function copyPix(btn) {
   const code = btn.dataset.code;
@@ -845,5 +865,5 @@ function ready() {
 Object.assign(window, {
   openItem, quickAdd, addDrink, goCat, repeatLast, closeSheet, refreshSheet, itShow, toggleIng, toggleTurbo, itQty, itConfirm,
   openReceipt, openCheckout, changeLine, upgradeLine, setMode, keepForm, placeOrder, maskTel, addLine, buzz, toast,
-  copyPix, informarPix, clearActive, toggleAdd,
+  copyPix, informarPix, clearActive, toggleAdd, sendProof,
 });
