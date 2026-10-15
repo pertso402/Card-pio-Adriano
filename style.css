@@ -505,3 +505,16 @@ textarea.field { resize: vertical; min-height: 72px; }
 @keyframes nudge { 0%, 100% { transform: translateX(-50%); } 50% { transform: translateX(-50%) scale(1.05); } }
 .dup { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 201, 60, .12); box-shadow: inset 0 0 0 1px rgba(255, 201, 60, .4); font-size: .88rem; line-height: 1.4; color: var(--text); }
 .dup button { display: block; margin-top: 8px; font-weight: 800; color: var(--yellow); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── Entrega por distância ── */
+.geo { display: grid; gap: 8px; padding: 12px; border-radius: 16px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.geo-st { font-size: .88rem; color: var(--muted); line-height: 1.4; }
+.geo-st b { color: var(--text); }
+.geo-st.ok { color: var(--text); }
+.geo-st.ok b { color: var(--yellow); }
+.geo-st small { display: block; font-size: .76rem; color: var(--dim); margin-top: 2px; }
+.geo-btn { justify-self: start; padding: 9px 12px; border-radius: 12px; background: var(--paper); color: var(--ink); font-weight: 800; font-size: .84rem; }
+/* ── Anexar comprovante ── */
+.pix-attach { cursor: pointer; }
+.pix-attach.busy { opacity: .7; pointer-events: none; }
+label.pix-link { display: inline-block; cursor: pointer; }
