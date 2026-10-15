@@ -557,3 +557,22 @@ textarea.field { resize: vertical; min-height: 70px; }
   .ticker { max-width: calc(var(--maxw) + 30px) !important; }
   .brabo { flex-basis: 62%; }
 }
+
+/* ── PIX (QR + comprovante) ── */
+.pix { margin: 18px auto 0; max-width: 340px; background: #fff; border: 3px solid var(--ink); border-radius: 22px; padding: 18px; text-align: center; box-shadow: 5px 5px 0 var(--ink); }
+.pix h4 { font-family: var(--f-display); font-weight: 400; font-size: 1.5rem; text-transform: uppercase; }
+.pix p { font-size: .84rem; color: var(--ink-2); margin-top: 4px; }
+.pix-qr { width: 200px; margin: 12px auto 8px; }
+.pix-qr svg { width: 100%; height: auto; display: block; }
+.pix-val { font-family: var(--f-display); font-size: 1.8rem; }
+.pix .btn { margin-top: 10px; width: 100%; }
+.btn.wa { background: #1FAF5A; }
+.pix-to { font-size: .78rem !important; }
+.pix-hint { font-size: .74rem !important; color: var(--ink-3) !important; }
+.pix-ok { display: inline-flex; margin-top: 12px; padding: 10px 14px; border-radius: 12px; font-weight: 700; font-size: .86rem; background: #E3F6EA; color: #13753A; }
+.pix-wait { background: #FFF1C9; color: #7A5600; }
+.pix-link { margin-top: 8px; font-size: .8rem; font-weight: 700; color: #13753A; text-decoration: underline; }
+.pix-steps { list-style: none; display: flex; justify-content: center; gap: 8px; margin-bottom: 12px; font-size: .7rem; font-weight: 700; color: var(--ink-3); }
+.pix-steps li.now { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.pix-steps li.ok { color: #13753A; }
+.pix-steps li.ok::before { content: '✓ '; }

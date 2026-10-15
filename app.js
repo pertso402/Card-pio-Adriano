@@ -668,7 +668,7 @@ function checkoutView() {
         <span class="co-label">Pagamento ${S.mode === 'delivery' ? 'na entrega' : 'na retirada'}</span>
         <div class="pay">${formas.map(f => `<button class="seg ${S.pay === f ? 'on' : ''}" onclick="keepForm();S.pay='${f}';refreshSheet()">${label[f]}</button>`).join('')}</div>
         ${S.pay === 'dinheiro' ? `<input class="field" id="coTroco" inputmode="decimal" placeholder="Troco pra quanto? (opcional)" value="${esc(cli.troco || '')}">` : ''}
-        ${S.pay === 'pix' ? `<div class="co-note">${c.chave_pix ? `Chave PIX: <b>${esc(c.chave_pix)}</b>. Pode pagar agora ou na entrega.` : 'A gente te passa a chave PIX pelo WhatsApp assim que o pedido entrar.'}</div>` : ''}
+        ${S.pay === 'pix' ? `<div class="co-note">${c.chave_pix ? 'Logo depois de fazer o pedido aparece o QR e o copia e cola com o valor certinho. Pagou, é só mandar o comprovante no WhatsApp com um toque.' : 'Você paga no PIX na entrega ou na retirada.'}</div>` : ''}
       </div>
       <div class="co-sec">
         <span class="co-label">Observação do pedido</span>
@@ -727,10 +727,11 @@ async function placeOrder() {
 }
 
 // ── Acompanhamento ─────────────────────────────────────────
-let trackTimer = null, trackData = null;
+let trackTimer = null, trackData = null, trackToken = null;
 function stopTrackPoll() { clearInterval(trackTimer); trackTimer = null; }
 function openTrack(token, numero, fresh = false) {
-  trackData = { numero, status: 'novo', tipo_entrega: S.mode, itens: [] };
+  trackToken = token;
+  trackData = { numero, status: 'novo', tipo_entrega: S.mode, forma_pagamento: S.pay, itens: [] };
   openSheet(() => trackView(fresh));
   const poll = async () => {
     const { data } = await supa.rpc('status_pedido', { p_token: token });
@@ -750,14 +751,49 @@ function trackView(fresh) {
   const rank = { novo: 0, preparo: 1, pronto: 2, entrega: 2, finalizado: 3 };
   const cur = rank[d.status] ?? 0;
   const num = '#' + String(d.numero).padStart(3, '0');
-  if (d.status === 'cancelado') return `<div class="track"><div class="stamp" style="border-color:var(--ink);color:var(--ink)">Cancelado<small>${num}</small></div><p>O restaurante cancelou esse pedido. Chama a gente no WhatsApp se tiver dúvida.</p><div class="rc-actions"><button class="btn center" onclick="clearActive();closeSheet()">Fechar</button></div></div>`;
+  if (d.status === 'cancelado') return `<div class="track"><div class="stamp" style="border-color:var(--ink);color:var(--ink)">Cancelado<small>${num}</small></div><p>O restaurante cancelou esse pedido.${S.loja?.config?.whatsapp ? ` <a href="https://wa.me/${esc(S.loja.config.whatsapp)}" target="_blank" rel="noopener">Chama a gente no WhatsApp</a> se tiver dúvida.` : ''}</p><div class="rc-actions"><button class="btn center" onclick="clearActive();closeSheet()">Fechar</button></div></div>`;
   return `<div class="track">
     <div class="stamp" ${fresh ? '' : 'style="animation:none"'}>${cur >= 3 ? 'Entregue' : 'Recebido'}<small>Pedido ${num}</small></div>
     <p>${cur >= 3 ? 'Valeu demais! Bom apetite 🍔' : 'Pode fechar essa tela: a gente avisa aqui em cima quando mudar.'}</p>
+    ${pixHTML()}
     <ol class="steps">${steps.map(([, ico, txt], i) => `<li class="${i < cur || cur === 3 ? 'done' : i === cur ? 'now' : ''}"><i>${i < cur || cur === 3 ? '✓' : ico}</i>${txt}</li>`).join('')}</ol>
     ${d.itens?.length ? `<div class="track-items">${d.itens.map(i => `${i.qtd}x ${esc(i.nome)}`).join('<br>')}<br><b>Total ${fmt(d.total)}</b></div>` : ''}
     <div class="rc-actions"><button class="btn center ${cur >= 3 ? '' : 'ghost'}" onclick="${cur >= 3 ? 'clearActive();' : ''}closeSheet()">${cur >= 3 ? 'Fechar' : 'Voltar pro cardápio'}</button></div>
   </div>`;
+}
+// ── PIX: QR com o valor do pedido + comprovante no WhatsApp ──
+const telBR = t => { const d = String(t).replace(/\D/g, '').replace(/^55/, ''); return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d; };
+function pixHTML() {
+  const d = trackData, c = S.loja?.config || {};
+  if (d.forma_pagamento !== 'pix' || d.status === 'cancelado') return '';
+  if (d.pago) return '<div class="pix"><h4>PIX recebido</h4><span class="pix-ok">✓ Pagamento confirmado pela loja</span></div>';
+  if (!c.chave_pix) return `<div class="pix"><h4>Pagamento no PIX</h4><p>Você paga na entrega ou na retirada. O valor é ${fmt(d.total || 0)}.</p></div>`;
+  const code = Pix.code({ key: c.chave_pix, name: S.loja.nome, city: 'Umuarama', amount: d.total, txid: 'PED' + d.numero });
+  const sent = d.pix_informado;
+  const keyLabel = String(c.chave_pix).startsWith('+55') ? telBR(c.chave_pix) : c.chave_pix;
+  return `<div class="pix">
+    <ol class="pix-steps"><li class="${sent ? 'ok' : 'now'}">Paga</li><li class="${sent ? 'now' : ''}">Manda o comprovante</li><li>A loja confirma</li></ol>
+    ${sent ? '' : `<h4>Paga no PIX agora</h4><p>Escaneia o QR ou copia o código. O valor já vem certinho.</p><div class="pix-qr">${Pix.qrSVG(code)}</div>`}
+    <div class="pix-val">${fmt(d.total || 0)}</div>
+    <p class="pix-to">Para <b>${esc(S.loja.nome)}</b> · chave ${esc(keyLabel)}</p>
+    <button class="btn ghost center" onclick="copyPix(this)" data-code="${esc(code)}">Copiar código PIX</button>
+    ${sent
+      ? '<span class="pix-ok pix-wait">Comprovante enviado. Assim que a loja conferir, aparece "confirmado" aqui.</span><button class="pix-link" onclick="sendProof(true)">Abrir o WhatsApp de novo</button>'
+      : '<button class="btn wa center" onclick="sendProof()">Já paguei · enviar comprovante</button><p class="pix-hint">Abre o WhatsApp da loja com o número do pedido. É só anexar o print do PIX.</p>'}
+  </div>`;
+}
+async function copyPix(btn) {
+  const code = btn.dataset.code;
+  try { await navigator.clipboard.writeText(code); }
+  catch { const t = document.createElement('textarea'); t.value = code; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  btn.textContent = 'Copiado ✓'; buzz(); setTimeout(() => { btn.textContent = 'Copiar código PIX'; }, 2200);
+}
+async function sendProof(again = false) {
+  const c = S.loja.config || {}, d = trackData;
+  const msg = `Oi! Paguei o PIX do pedido #${String(d.numero).padStart(3, '0')} (${fmt(d.total || 0)}). Segue o comprovante:`;
+  if (c.whatsapp) window.open(`https://wa.me/${String(c.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+  if (!again && !d.pix_informado) { await supa.rpc('informar_pix', { p_token: trackToken }); d.pix_informado = true; refreshSheet(); }
+  buzz();
 }
 function clearActive() { store.del('adl_pedido'); renderLivePill(); }
 function renderLivePill() {
@@ -805,5 +841,5 @@ function toast(msg) {
 Object.assign(window, {
   openItem, quickAdd, addDrink, goCat, repeatLast, closeSheet, refreshSheet, toggleIng, toggleUpgrade, itQty, itConfirm,
   openReceipt, openCheckout, changeLine, upgradeLine, setMode, keepForm, placeOrder, maskTel, addLine, buzz, afterWater,
-  clearActive,
+  clearActive, copyPix, sendProof,
 });
