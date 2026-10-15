@@ -576,3 +576,10 @@ textarea.field { resize: vertical; min-height: 70px; }
 .pix-steps li.now { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .pix-steps li.ok { color: #13753A; }
 .pix-steps li.ok::before { content: '✓ '; }
+
+/* pedido em aberto */
+.live-pill.alert { background: var(--red); border-color: #fff; animation: nudge 1.6s ease-in-out infinite; }
+.live-pill.alert .dot { background: #fff; }
+@keyframes nudge { 0%, 100% { transform: translateX(-50%); } 50% { transform: translateX(-50%) scale(1.05); } }
+.dup { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: #FFF1C9; border: 2px solid var(--ink); font-size: .88rem; line-height: 1.4; }
+.dup button { display: block; margin-top: 8px; font-weight: 800; text-decoration: underline; }

@@ -646,6 +646,7 @@ function checkoutView() {
     <div class="co">
       <button class="co-back" onclick="openReceipt()">← Voltar pra comanda</button>
       <h3>Quase lá,<br>só falta isso.</h3>
+      ${(() => { const ap = store.get('adl_pedido'); return ap && trackData?.numero === ap.numero && pedidoVivo(trackData) ? `<div class="dup">Você já tem o pedido <b>#${String(ap.numero).padStart(3, '0')}</b> em andamento${pixPendente(trackData) ? ', esperando o PIX' : ''}. <button onclick="openTrack('${ap.token}', ${ap.numero})">Ver esse pedido</button></div>` : ''; })()}
       ${st.open ? '' : `<div class="closed-banner" style="margin:14px 0 0">🌙 ${esc(st.text)}. Seu pedido fica salvo aqui até a gente abrir.</div>`}
       <div class="co-sec">
         <span class="co-label">Quem tá pedindo</span>
@@ -686,6 +687,7 @@ function checkoutView() {
     </div>`;
 }
 // guarda o que já foi digitado antes de re-renderizar o form
+$('sheetBody').addEventListener('input', e => { if (e.target.closest('.co') && $('coNome')) keepForm(); });
 function keepForm() {
   const v = id => $(id)?.value;
   const cli = store.get('adl_cliente') || {};
@@ -731,6 +733,7 @@ let trackTimer = null, trackData = null, trackToken = null;
 function stopTrackPoll() { clearInterval(trackTimer); trackTimer = null; }
 function openTrack(token, numero, fresh = false) {
   trackToken = token;
+  setTimeout(() => setOrderHash(token), 0);
   trackData = { numero, status: 'novo', tipo_entrega: S.mode, forma_pagamento: S.pay, itens: [] };
   openSheet(() => trackView(fresh));
   const poll = async () => {
@@ -795,7 +798,7 @@ async function sendProof(again = false) {
   if (!again && !d.pix_informado) { await supa.rpc('informar_pix', { p_token: trackToken }); d.pix_informado = true; refreshSheet(); }
   buzz();
 }
-function clearActive() { store.del('adl_pedido'); renderLivePill(); }
+function clearActive() { store.del('adl_pedido'); setOrderHash(null); renderLivePill(); }
 function renderLivePill() {
   const a = store.get('adl_pedido');
   const pill = $('livePill');
@@ -804,17 +807,39 @@ function renderLivePill() {
     pill.hidden = true; return;
   }
   const label = { novo: 'recebido', preparo: 'na chapa 🔥', pronto: 'pronto!', entrega: 'saiu pra entrega 🛵' }[trackData?.numero === a.numero ? trackData.status : 'novo'];
-  pill.innerHTML = `<span class="dot"></span>Pedido #${String(a.numero).padStart(3, '0')} · ${label}`;
+  const alert = trackData?.numero === a.numero && pixPendente(trackData);
+  pill.classList.toggle('alert', alert);
+  pill.innerHTML = alert ? `<span class="dot"></span>Falta pagar o PIX · pedido #${String(a.numero).padStart(3, '0')}` : `<span class="dot"></span>Pedido #${String(a.numero).padStart(3, '0')} · ${label}`;
   pill.hidden = false;
   pill.onclick = () => openTrack(a.token, a.numero);
 }
-async function checkActive() {
-  const a = store.get('adl_pedido'); if (!a) return;
+// ── Pedido em aberto: o cliente nunca perde o pedido nem o PIX ──
+// PIX por pagar = pediu no PIX, a loja tem chave, ainda não pagou nem mandou comprovante
+const pixPendente = d => !!d && d.forma_pagamento === 'pix' && !d.pago && !d.pix_informado && !['cancelado', 'finalizado'].includes(d.status) && !!S.loja?.config?.chave_pix;
+const pedidoVivo = d => !!d && !['cancelado', 'finalizado'].includes(d.status);
+let activeTimer = null;
+async function refreshActive(reason = 'tick') {
+  const a = store.get('adl_pedido'); if (!a) return null;
   const { data } = await supa.rpc('status_pedido', { p_token: a.token });
-  if (!data) { store.del('adl_pedido'); return; }
+  if (!data) { store.del('adl_pedido'); setOrderHash(null); renderLivePill(); return null; }
+  if (a.numero !== data.numero) store.set('adl_pedido', { ...a, numero: data.numero });
   trackData = data; renderLivePill();
-  // atualiza o pill em segundo plano enquanto o pedido estiver vivo
-  if (!['finalizado', 'cancelado'].includes(data.status)) setTimeout(checkActive, 20000);
+  // voltou do app do banco (ou a página recarregou) com o PIX por pagar: o QR volta pra frente
+  if (reason !== 'tick' && pixPendente(data) && !$('sheet').classList.contains('open')) openTrack(a.token, data.numero);
+  if (!pedidoVivo(data)) { clearInterval(activeTimer); activeTimer = null; }
+  return data;
+}
+function checkActive() {
+  // o link do pedido na URL (#pedido=...) também traz o pedido de volta
+  const m = location.hash.match(/pedido=([0-9a-f-]{36})/i);
+  if (m && store.get('adl_pedido')?.token !== m[1]) store.set('adl_pedido', { token: m[1], numero: 0, at: Date.now() });
+  if (!store.get('adl_pedido')) return;
+  refreshActive('load');
+  clearInterval(activeTimer); activeTimer = setInterval(() => refreshActive('tick'), 20000);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && store.get('adl_pedido')) refreshActive('back'); });
+function setOrderHash(token) {
+  try { history.replaceState(history.state, '', location.pathname + location.search + (token ? '#pedido=' + token : '')); } catch {}
 }
 
 // ── Toast ──────────────────────────────────────────────────
@@ -841,5 +866,5 @@ function toast(msg) {
 Object.assign(window, {
   openItem, quickAdd, addDrink, goCat, repeatLast, closeSheet, refreshSheet, toggleIng, toggleUpgrade, itQty, itConfirm,
   openReceipt, openCheckout, changeLine, upgradeLine, setMode, keepForm, placeOrder, maskTel, addLine, buzz, afterWater,
-  clearActive, copyPix, sendProof,
+  clearActive, copyPix, sendProof, openTrack,
 });
