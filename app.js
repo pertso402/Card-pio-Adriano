@@ -703,9 +703,9 @@ function geoHTML() {
   const c = S.loja.config || {}, g = S.geo, f = g ? Entrega.fee(c, g) : null;
   const raio = String(c.entrega_raio_km).replace('.', ',');
   if (S.geoBusy) return '<div class="geo-st">Calculando a distância…</div>';
-  if (g) return `<div class="geo-st ok">📍 ${String(f.km).replace('.', ',')} km da loja · entrega <b>${fmt(f.taxa)}</b><small>${g.fonte === 'gps' ? 'pela sua localização' : 'aproximado, pelo endereço'}</small></div>
+  if (g) return `<div class="geo-st ok">📍 ${String(f.km).replace('.', ',')} km de carro · entrega <b>${fmt(f.taxa)}</b><small>${(g.fonte === 'gps' ? 'pela sua localização' : 'pelo endereço digitado') + (f.estimado ? ' · distância estimada' : '')}</small></div>
     ${g.fonte !== 'gps' ? '<button class="geo-btn" onclick="useGps()">📍 Usar minha localização (mais preciso)</button>' : ''}`;
-  return `<div class="geo-st">Até ${raio} km: <b>${fmt(c.taxa_entrega)}</b> · acima: <b>${fmt(c.taxa_entrega_longe)}</b>${S.geoFail ? '<small>Não achamos esse endereço no mapa. Usa sua localização ou a loja confere.</small>' : ''}</div>
+  return `<div class="geo-st">Até ${raio} km de carro: <b>${fmt(c.taxa_entrega)}</b> · acima: <b>${fmt(c.taxa_entrega_longe)}</b>${S.geoFail ? '<small>Não achamos esse endereço no mapa. Usa sua localização ou a loja confere.</small>' : ''}</div>
     <button class="geo-btn" onclick="useGps()">📍 Usar minha localização</button>`;
 }
 function refreshCo() {
@@ -717,7 +717,7 @@ function saveGeo() { const cli = store.get('adl_cliente') || {}; store.set('adl_
 async function useGps() {
   clearTimeout(geoT); // GPS manda: a busca pelo endereço não pode passar por cima
   S.geoBusy = true; S.geoFail = false; refreshCo();
-  try { S.geo = await Entrega.gps(); saveGeo(); buzz(); }
+  try { S.geo = await Entrega.rota(S.loja.config, await Entrega.gps()); saveGeo(); buzz(); }
   catch (e) { toast(e.message); }
   S.geoBusy = false; refreshCo();
 }
@@ -730,7 +730,8 @@ function scheduleGeocode() {
     const rua = $('coRua')?.value.trim(), numero = $('coNum')?.value.trim(), bairro = $('coBairro')?.value.trim();
     if (!rua || !numero || S.geo?.fonte === 'gps') return;
     S.geoBusy = true; refreshCo();
-    const g = await Entrega.geocode(S.loja.config, { rua, numero, bairro });
+    const g0 = await Entrega.geocode(S.loja.config, { rua, numero, bairro });
+    const g = g0 ? await Entrega.rota(S.loja.config, g0) : null;
     S.geoBusy = false;
     if (S.geo?.fonte === 'gps') return refreshCo();
     S.geo = g; S.geoFail = !g; saveGeo(); refreshCo();
@@ -759,7 +760,7 @@ async function placeOrder() {
   const pedido = {
     cliente_nome: cli.nome.trim(), cliente_telefone: cli.tel,
     tipo_entrega: S.mode, forma_pagamento: S.pay,
-    endereco: S.mode === 'delivery' ? { rua: cli.rua, numero: cli.numero, bairro: cli.bairro, complemento: cli.comp || null, ...(S.geo ? { lat: S.geo.lat, lng: S.geo.lng, fonte: S.geo.fonte } : {}) } : null,
+    endereco: S.mode === 'delivery' ? { rua: cli.rua, numero: cli.numero, bairro: cli.bairro, complemento: cli.comp || null, ...(S.geo ? { lat: S.geo.lat, lng: S.geo.lng, fonte: S.geo.fonte, rota_km: S.geo.rota_km, rota_fonte: S.geo.rota_fonte } : {}) } : null,
     troco_para: S.pay === 'dinheiro' && cli.troco ? String(cli.troco).replace(',', '.').replace(/[^\d.]/g, '') : null,
     observacoes: cli.obsPedido || null,
   };

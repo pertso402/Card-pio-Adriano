@@ -17,14 +17,30 @@ const Entrega = (() => {
   const store = cfg => cfg?.loja_lat != null && cfg?.loja_lng != null ? { lat: Number(cfg.loja_lat), lng: Number(cfg.loja_lng) } : null;
   const enabled = cfg => !!store(cfg) && cfg?.entrega_raio_km != null && cfg?.taxa_entrega_longe != null;
 
-  // taxa para uma posição (sem posição = taxa base)
+  // taxa para uma posição (sem posição = taxa base). Vale o caminho de carro;
+  // sem rota, estima linha reta × 1,5 (mesma regra do public.calcular_entrega)
   function fee(cfg, geo) {
     const base = Number(cfg?.taxa_entrega || 0);
     const loja = store(cfg);
     if (!geo || !loja) return { taxa: base, km: null };
-    const d = km(loja, geo);
+    const d = geo.rota_km != null ? Number(geo.rota_km) : Math.round(km(loja, geo) * 1.5 * 100) / 100;
     const longe = enabled(cfg) && d > Number(cfg.entrega_raio_km);
-    return { taxa: longe ? Number(cfg.taxa_entrega_longe) : base, km: d, longe };
+    return { taxa: longe ? Number(cfg.taxa_entrega_longe) : base, km: d, longe, estimado: geo.rota_fonte !== 'rota' };
+  }
+
+  // caminho de carro da loja até o cliente (OSRM, gratuito, sem chave)
+  async function rota(cfg, pos) {
+    const loja = store(cfg); if (!loja || !pos) return pos;
+    const reta = km(loja, pos);
+    try {
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 7000);
+      const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${loja.lng},${loja.lat};${pos.lng},${pos.lat}?overview=false`, { signal: ctrl.signal });
+      clearTimeout(t);
+      const m = (await r.json()).routes?.[0]?.distance;
+      const k = m ? Math.round(m / 10) / 100 : null;
+      if (k != null && k >= reta * .98 && k <= Math.max(reta * 3, reta + 2)) return { ...pos, rota_km: k, rota_fonte: 'rota' };
+    } catch {}
+    return { ...pos, rota_km: Math.round(reta * 1.5 * 100) / 100, rota_fonte: 'estimado' };
   }
 
   // GPS do celular (preciso quando o cliente está em casa)
@@ -58,7 +74,7 @@ const Entrega = (() => {
     }
     return (cache[key] = null);
   }
-  return { km, fee, gps, geocode, enabled };
+  return { km, fee, gps, geocode, rota, enabled };
 })();
 
 const Comprovante = (() => {
