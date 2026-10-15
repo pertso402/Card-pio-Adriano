@@ -136,9 +136,10 @@ body.ready .facts { opacity: 1; transform: none; transition: all .8s var(--out) 
 
 /* ── ABAS (indicador deslizante) ────────────────────────── */
 .tabs { position: sticky; top: calc(62px + env(safe-area-inset-top)); z-index: 30; padding: 10px var(--gutter); margin-top: 22px; background: linear-gradient(var(--bg) 72%, transparent); }
-.tabs-in { position: relative; display: flex; max-width: 520px; margin: 0 auto; padding: 4px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.tabs-in { position: relative; display: flex; max-width: 720px; margin: 0 auto; padding: 4px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow-x: auto; scrollbar-width: none; }
+.tabs-in::-webkit-scrollbar { display: none; }
 .tabs-pill { position: absolute; top: 4px; bottom: 4px; left: 0; border-radius: 999px; background: var(--paper); transition: transform .5s var(--out), width .5s var(--out); z-index: 0; }
-.tab { position: relative; z-index: 1; flex: 1; padding: 11px 8px; border-radius: 999px; font-weight: 700; font-size: .9rem; color: var(--muted); white-space: nowrap; transition: color .3s; }
+.tab { position: relative; z-index: 1; flex: 1 0 auto; padding: 11px 15px; border-radius: 999px; font-weight: 700; font-size: .9rem; color: var(--muted); white-space: nowrap; transition: color .3s; }
 .tab.on { color: var(--ink); }
 
 /* ── CARDÁPIO ───────────────────────────────────────────── */
@@ -471,3 +472,17 @@ textarea.field { resize: vertical; min-height: 72px; }
   .facts { grid-row: 2; align-self: start; justify-content: flex-start; gap: 24px; }
   .hero-title { font-size: 6.4rem; }
 }
+
+/* ── Adicionais ── */
+.chips.adds { gap: 8px; }
+.chip-a { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 14px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line-2); font-size: .86rem; font-weight: 650; transition: all .25s var(--out); }
+.chip-a b { font-size: .78rem; color: var(--yellow); font-weight: 800; }
+.chip-a.on { background: var(--yellow); color: var(--ink); box-shadow: none; transform: translateY(-1px); }
+.chip-a.on b { color: var(--ink); }
+.chip-a:active { transform: scale(.95); }
+.rc-adds { grid-column: 2 / -1; font-size: .74rem; color: #6d5848; }
+.row.molho .thumb { background: radial-gradient(70% 60% at 50% 70%, rgba(80, 180, 70, .28), transparent 75%), var(--surface-2); }
+.row.molho .thumb svg { inset: 14px; width: calc(100% - 28px); height: calc(100% - 28px); }
+.rc-thumb svg, .tray-thumbs svg { overflow: visible; }
+.foot-links { display: flex; justify-content: center; gap: 16px; margin-top: 12px !important; font-size: .86rem !important; }
+.foot-links a { color: var(--yellow); text-decoration: none; font-weight: 700; }

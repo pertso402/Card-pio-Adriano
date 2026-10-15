@@ -29,17 +29,26 @@ const S = {
   mode: (store.get('adl_cliente') || {}).mode || 'delivery',
   pay: (store.get('adl_cliente') || {}).pay || null,
   drinkAsked: 0, common: {}, hero: null,
+  adds: [], addById: new Map(),               // adicionais da loja
 };
 
 // ── Produtos ───────────────────────────────────────────────
 const catOf = p => S.cats.find(c => c.id === p.categoria_id);
-const isDrink = p => !!p && catOf(p)?.slug === 'bebidas';
-const isLanche = p => !!p && !isDrink(p);
+const isDrink = p => !!p && (catOf(p)?.slug || '').startsWith('bebidas');
+const isMolho = p => !!p && catOf(p)?.slug === 'molhos';
+const isLanche = p => !!p && !isDrink(p) && !isMolho(p);
+const acceptsAdds = p => !!catOf(p)?.aceita_adicionais;
+const isAlcohol = p => catOf(p)?.slug === 'bebidas-alcoolicas';
 const qtyOf = id => S.cart.filter(l => l.id === id).reduce((s, l) => s + l.qty, 0);
 const drinksInCart = () => S.cart.filter(l => isDrink(S.byId.get(l.id))).reduce((s, l) => s + l.qty, 0);
 const lanchesInCart = () => S.cart.filter(l => isLanche(S.byId.get(l.id))).reduce((s, l) => s + l.qty, 0);
 const findProd = re => S.prods.find(p => p.disponivel && re.test(p.nome));
 const art = (p, opts) => Stack.svg(p.descricao || p.nome, opts);
+const addsOf = l => (l.adds || []).map(id => S.addById.get(id)).filter(Boolean);
+const linePrice = l => (S.byId.get(l.id)?.preco || 0) + addsOf(l).reduce((s, x) => s + x.preco, 0);
+// adicional que vira camada no desenho
+const ADD_LAYER = { 'queijo': 'mussarela', 'frango desfiado': 'frango' };
+const addLayer = x => ADD_LAYER[x.nome.toLowerCase()] || x.nome.toLowerCase();
 const distinct = p => { const c = S.common[p.categoria_id] || new Set(); return p.ing.filter(i => !/^p[aã]o$/.test(i) && !c.has(i)); };
 
 function bevLook(p) {
@@ -47,7 +56,7 @@ function bevLook(p) {
   let shape = 'lata';
   if (/\b2l\b/.test(n)) shape = 'pet2';
   else if (/600/.test(n)) shape = 'pet';
-  else if (/ks|290|long/.test(n)) shape = 'ks';
+  else if (/ks|290|long|355/.test(n)) shape = 'ks';
   else if (/900|suco/.test(n)) shape = 'box';
   else if (/monster|energ/.test(n)) shape = 'tall';
   else if (/h2o|água|agua/.test(n)) shape = 'pet';
@@ -61,7 +70,14 @@ function bevLook(p) {
     [/monster|energ/, zero ? ['#E6E6E6', '#111', 'Monster Zero'] : ['#111', '#7AC943', 'Monster']],
     [/h2o/, ['#BFE6F5', '#0E6E9C', 'H2O']],
     [/água|agua/, ['#CFEFFF', '#1F6E9A', 'Água']],
-    [/prats/, ['#FF9A1F', '#fff', 'Prats']],
+    [/suco/, ['#FF9A1F', '#fff', 'Suco']],
+    [/heineken/, ['#0B6E3B', '#fff', 'Heineken']],
+    [/stella/, ['#EFE6D2', '#C8102E', 'Stella']],
+    [/budweiser/, ['#C8102E', '#fff', 'Budweiser']],
+    [/\bsol\b/, ['#F2C200', '#1B4D9C', 'Sol']],
+    [/brahma/, ['#C8102E', '#fff', 'Brahma']],
+    [/skol/, ['#FFD100', '#C8102E', 'Skol']],
+    [/antarctica boa/, ['#1C4FA0', '#fff', 'Antarctica']],
     [/festy/, ['#FFB300', '#7A2E00', 'Festy']],
   ].find(([re]) => re.test(n));
   const [c, c2, label] = look ? look[1] : ['#888', '#fff', p.nome.split(' ')[0]];
@@ -69,7 +85,13 @@ function bevLook(p) {
 }
 const canHTML = p => { const l = bevLook(p); return `<div class="can ${l.shape}" style="--c:${l.c};--c2:${l.c2}"><span>${esc(l.label)}</span></div>`; };
 // imagem do produto: foto real > desenho > lata
+function molhoArt(p) {
+  return /bisnaga/i.test(p.nome)
+    ? '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M44 8h12v10H44z" fill="#E8E2D6" stroke="#23140E" stroke-width="3"/><path d="M38 18h24l6 14v52a8 8 0 0 1-8 8H40a8 8 0 0 1-8-8V32z" fill="#3E9B3A" stroke="#23140E" stroke-width="3" stroke-linejoin="round"/><rect x="38" y="46" width="24" height="22" rx="4" fill="#FFF6E9"/><path d="M43 57h14" stroke="#3E9B3A" stroke-width="4" stroke-linecap="round"/></svg>'
+    : '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M22 30h56l-4 44H26z" fill="#3E9B3A" stroke="#23140E" stroke-width="3" stroke-linejoin="round"/><path d="M22 30l6-8h44l6 8" fill="#5CB84F" stroke="#23140E" stroke-width="3" stroke-linejoin="round"/><circle cx="50" cy="52" r="11" fill="#FFF6E9"/><path d="M45 52q5-6 10 0" stroke="#3E9B3A" stroke-width="3" fill="none" stroke-linecap="round"/></svg>';
+}
 function media(p) {
+  if (isMolho(p)) return molhoArt(p);
   if (isDrink(p)) return `<div style="position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;transform:scale(.5);transform-origin:50% 92%">${canHTML(p)}</div>`;
   return p.foto_url ? `<img src="${esc(p.foto_url)}" alt="${esc(p.nome)}" loading="lazy" decoding="async">` : art(p);
 }
@@ -78,15 +100,18 @@ function media(p) {
 async function loadMenu() {
   const { data: loja, error } = await supa.from('lojas').select('*').eq('slug', LOJA_SLUG).single();
   if (error || !loja) throw error || new Error('Loja não encontrada');
-  const [{ data: cats }, { data: prods }] = await Promise.all([
+  const [{ data: cats }, { data: prods }, { data: adds }] = await Promise.all([
     supa.from('categorias').select('*').eq('loja_id', loja.id).order('ordem'),
     supa.from('produtos').select('*').eq('loja_id', loja.id).order('ordem'),
+    supa.from('adicionais').select('*').eq('loja_id', loja.id).order('ordem'),
   ]);
-  applyMenu(loja, cats || [], prods || []);
-  store.set('adl2_menu', { loja, cats, prods });
+  applyMenu(loja, cats || [], prods || [], adds || []);
+  store.set('adl2_menu', { loja, cats, prods, adds });
 }
-function applyMenu(loja, cats, prods) {
+function applyMenu(loja, cats, prods, adds = []) {
   S.loja = loja;
+  S.adds = adds.filter(x => x.disponivel).map(x => ({ ...x, preco: Number(x.preco) }));
+  S.addById = new Map(S.adds.map(x => [x.id, x]));
   S.cats = cats.filter(c => c.ativa);
   S.prods = prods.map(p => ({ ...p, preco: Number(p.preco), ing: Stack.ingredientsOf(p.descricao) }));
   S.byId = new Map(S.prods.map(p => [p.id, p]));
@@ -109,6 +134,7 @@ function subscribe() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'produtos', filter: `loja_id=eq.${id}` }, reload)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'categorias', filter: `loja_id=eq.${id}` }, reload)
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lojas', filter: `id=eq.${id}` }, reload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'adicionais', filter: `loja_id=eq.${id}` }, reload)
     .subscribe();
 }
 
@@ -136,9 +162,12 @@ function renderStatus() {
   $('factTaxa').textContent = c.taxa_entrega ? short(c.taxa_entrega) : 'Grátis';
   $('footAddr').textContent = c.endereco || '';
   $('footHours').textContent = `todos os dias · ${c.horario?.abre || '19:00'} às ${c.horario?.fecha || '01:00'}`;
+  $('footLinks').innerHTML = [c.whatsapp ? `<a href="https://wa.me/${esc(c.whatsapp)}" target="_blank" rel="noopener">WhatsApp ${esc(telBR(c.whatsapp))}</a>` : '', c.instagram ? `<a href="https://instagram.com/${esc(c.instagram)}" target="_blank" rel="noopener">@${esc(c.instagram)}</a>` : ''].join('');
   const painel = typeof PAINEL_URL !== 'undefined' ? PAINEL_URL : '';
   $('gear').hidden = !painel; if (painel) $('gear').href = painel;
 }
+
+const telBR = t => { const d = String(t).replace(/\D/g, '').replace(/^55/, ''); return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d; };
 
 // ── HERO ───────────────────────────────────────────────────
 function pickHero() {
@@ -169,7 +198,7 @@ function onScroll() {
 addEventListener('scroll', () => { if (!scrollTick) { scrollTick = true; requestAnimationFrame(() => { onScroll(); scrollTick = false; }); } }, { passive: true });
 
 // ── Abas com indicador deslizante ──────────────────────────
-const catShort = c => ({ 'prensados-salsicha': 'Salsicha', 'lanches-hamburguer': 'Hambúrguer', bebidas: 'Bebidas' }[c.slug] || c.nome);
+const catShort = c => ({ 'prensados-salsicha': 'Salsicha', 'lanches-hamburguer': 'Hambúrguer', vegetarianos: 'Veggie', molhos: 'Molho', bebidas: 'Bebidas', 'bebidas-alcoolicas': 'Cervejas' }[c.slug] || c.nome);
 function renderTabs() {
   $('tabs').innerHTML = `<div class="tabs-in"><span class="tabs-pill" id="tabsPill"></span>${S.cats.map((c, i) =>
     `<button class="tab ${i === 0 ? 'on' : ''}" data-cat="${c.id}" onclick="goCat('${c.id}')">${esc(catShort(c))}</button>`).join('')}</div>`;
@@ -184,7 +213,8 @@ function movePill(tab, animate = true) {
 }
 function setTab(id) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.cat === id));
-  movePill(document.querySelector('.tab.on'));
+  const on = document.querySelector('.tab.on'); movePill(on);
+  const box = on?.parentElement; if (box) box.scrollTo({ left: on.offsetLeft - box.clientWidth / 2 + on.offsetWidth / 2, behavior: 'smooth' });
 }
 let lockObs = 0;
 function goCat(id) {
@@ -208,7 +238,8 @@ function rowHTML(p) {
   const c = S.common[p.categoria_id] || new Set();
   const ing = p.ing.filter(i => !/^p[aã]o$/.test(i)).map(i => c.has(i) ? esc(i) : `<b>${esc(i)}</b>`).join(', ');
   const q = qtyOf(p.id);
-  return `<article class="row ${p.disponivel ? '' : 'off'}" role="button" tabindex="0" onclick="openItem('${p.id}', this.querySelector('.thumb'))" onkeydown="if(event.key==='Enter')this.click()">
+  const tap = isLanche(p) ? `openItem('${p.id}', this.querySelector('.thumb'))` : `quickAdd('${p.id}', this.querySelector('.thumb'))`;
+  return `<article class="row ${p.disponivel ? '' : 'off'} ${isMolho(p) ? 'molho' : ''}" role="button" tabindex="0" onclick="${tap}" onkeydown="if(event.key==='Enter')this.click()">
     <span class="row-txt">
       <span class="row-name">${esc(p.nome)}</span>
       ${ing ? `<span class="row-ing">${ing}</span>` : ''}
@@ -231,7 +262,7 @@ function renderMenu() {
   $('menu').innerHTML = top + S.cats.map(c => {
     const list = S.prods.filter(p => p.categoria_id === c.id);
     if (!list.length) return '';
-    if (c.slug === 'bebidas') return renderFridge(c, list);
+    if (c.slug.startsWith('bebidas')) return renderFridge(c, list);
     return `<section class="cat" id="cat-${c.id}"><div class="cat-head"><h2>${esc(c.nome)}</h2><span>${list.length} opções</span></div>
       <div class="list">${list.map(rowHTML).join('')}</div></section>`;
   }).join('');
@@ -239,6 +270,7 @@ function renderMenu() {
 }
 function shelfOf(p) {
   const s = bevLook(p).shape;
+  if (isAlcohol(p)) return s === 'ks' ? 'Long neck' : 'Latas';
   if (s === 'lata') return 'Latinhas 350ml';
   if (s === 'ks') return 'Garrafinhas';
   if (s === 'pet') return /600/.test(p.nome) ? '600ml' : 'Águas';
@@ -252,9 +284,10 @@ function bevHTML(p, origem = 'cardapio') {
     <span class="bev-name">${esc(p.nome)}</span><span class="bev-price">${short(p.preco)}</span></button>`;
 }
 function renderFridge(c, list) {
-  const order = ['Latinhas 350ml', 'Garrafinhas', '600ml', '2 litros · pra galera', 'Sucos & energéticos', 'Águas'], groups = {};
+  const order = ['Latinhas 350ml', 'Garrafinhas', '600ml', 'Sucos & energéticos', 'Águas', 'Long neck', 'Latas'], groups = {};
   list.filter(p => p.disponivel).forEach(p => (groups[shelfOf(p)] ||= []).push(p));
-  return `<section class="cat" id="cat-${c.id}"><div class="cat-head"><h2>Bebidas</h2><span>toca pra pegar</span></div>
+  const alc = c.slug === 'bebidas-alcoolicas';
+  return `<section class="cat" id="cat-${c.id}"><div class="cat-head"><h2>${alc ? 'Cervejas' : 'Bebidas'}</h2><span>${alc ? 'proibido para menores de 18' : 'toca pra pegar'}</span></div>
     <div class="fridge">${order.filter(g => groups[g]).map(g => `<div class="shelf-label">${g}</div><div class="shelf">${groups[g].map(p => bevHTML(p)).join('')}</div>`).join('')}</div></section>`;
 }
 let catObs;
@@ -302,14 +335,14 @@ function renderAgain() {
   el.hidden = false;
 }
 function repeatLast() {
-  (store.get('adl_ultimo')?.itens || []).forEach(i => { if (S.byId.get(i.id)?.disponivel) addLine({ id: i.id, qty: i.qty, remove: i.remove || [], obs: i.obs || '', origem: 'repetir' }); });
+  (store.get('adl_ultimo')?.itens || []).forEach(i => { if (S.byId.get(i.id)?.disponivel) addLine({ id: i.id, qty: i.qty, remove: i.remove || [], adds: (i.adds || []).filter(id => S.addById.has(id)), obs: i.obs || '', origem: 'repetir' }); });
   buzz(); openReceipt();
 }
 
 // ── Carrinho ───────────────────────────────────────────────
-const lineKey = l => `${l.id}|${[...(l.remove || [])].sort().join(',')}|${l.obs || ''}|${l.origem}`;
+const lineKey = l => `${l.id}|${[...(l.remove || [])].sort().join(',')}|${[...(l.adds || [])].sort().join(',')}|${l.obs || ''}|${l.origem}`;
 function addLine(line, bump = true) {
-  const l = { remove: [], obs: '', origem: 'cardapio', qty: 1, ...line };
+  const l = { remove: [], adds: [], obs: '', origem: 'cardapio', qty: 1, ...line };
   l.key = lineKey(l);
   const ex = S.cart.find(x => x.key === l.key);
   if (ex) ex.qty += l.qty; else S.cart.push(l);
@@ -320,9 +353,12 @@ function syncCart() {
   const n = S.cart.length;
   S.cart = S.cart.filter(l => S.byId.get(l.id)?.disponivel);
   if (S.cart.length < n) toast('Um item acabou e saiu da comanda');
+  let dropped = false;
+  S.cart.forEach(l => { const ok = (l.adds || []).filter(id => S.addById.has(id)); if (ok.length !== (l.adds || []).length) { l.adds = ok; l.key = lineKey(l); dropped = true; } });
+  if (dropped) toast('Um adicional acabou e saiu da comanda');
   saveCart();
 }
-const subtotal = () => S.cart.reduce((s, l) => s + (S.byId.get(l.id)?.preco || 0) * l.qty, 0);
+const subtotal = () => S.cart.reduce((s, l) => s + linePrice(l) * l.qty, 0);
 const count = () => S.cart.reduce((s, l) => s + l.qty, 0);
 function taxa() {
   if (S.mode !== 'delivery' || !S.cart.length) return 0;
@@ -374,6 +410,7 @@ function flyToCart(fromEl) {
 }
 function quickAdd(id, fromEl) {
   const p = S.byId.get(id); if (!p?.disponivel) return;
+  if (isDrink(p)) return addDrink(id, 'cardapio', fromEl);
   flyToCart(fromEl);
   addLine({ id, origem: 'cardapio' }, false);
   buzz();
@@ -442,7 +479,8 @@ let IT = null;
 function openItem(id, srcEl) {
   const p = S.byId.get(id); if (!p) return;
   if (isDrink(p)) return addDrink(id, 'cardapio', srcEl);
-  IT = { id, remove: new Set(), turbo: false, qty: 1, obs: '', obsOpen: false, show: p.foto_url ? 'photo' : 'inside', anim: 'build', hl: [] };
+  if (!isLanche(p)) return quickAdd(id, srcEl);
+  IT = { id, remove: new Set(), adds: [], turbo: false, qty: 1, obs: '', obsOpen: false, show: p.foto_url ? 'photo' : 'inside', anim: 'build', hl: [] };
   openSheet(itemView);
   flipFrom(srcEl);
 }
@@ -451,7 +489,10 @@ function itemView() {
   const p = S.byId.get(IT.id), up = p.upgrade_para && S.byId.get(p.upgrade_para), upOk = up?.disponivel, shown = itShown();
   const extra = upOk ? up.ing.filter(i => !p.ing.includes(i)) : [];
   const photo = IT.show === 'photo' && shown.foto_url;
-  let stage = art(shown, { removed: [...IT.remove], highlight: IT.hl });
+  const chosen = IT.adds.map(id => S.addById.get(id)).filter(Boolean);
+  const unit = shown.preco + chosen.reduce((s, x) => s + x.preco, 0);
+  const descPlus = [(shown.descricao || '').replace(/\.\s*$/, ''), ...chosen.map(addLayer)].filter(Boolean).join(', ');
+  let stage = Stack.svg(descPlus, { removed: [...IT.remove], highlight: IT.hl });
   if (IT.anim === 'build') stage = stage.replace('class="stack', 'class="stack build');
   IT.anim = 'none'; IT.hl = [];
   return `
@@ -460,7 +501,7 @@ function itemView() {
       <button class="it-close" onclick="closeSheet()" aria-label="Fechar">✕</button>
       ${shown.foto_url ? `<div class="it-view"><button class="${photo ? 'on' : ''}" onclick="itShow('photo')">Foto</button><button class="${photo ? '' : 'on'}" onclick="itShow('inside')">Por dentro</button></div>` : ''}
     </div>
-    <div class="it-head"><h2 class="it-name">${esc(shown.nome)}</h2><span class="it-price">${short(shown.preco)}</span></div>
+    <div class="it-head"><h2 class="it-name">${esc(shown.nome)}</h2><span class="it-price">${short(unit)}</span></div>
     ${shown.ing.length ? `<p class="it-label">Toque pra tirar o que não curte</p><div class="chips">${shown.ing.map(i => {
       const k = Stack.keyOf(i) || 'pao';
       return `<button class="chip-i ${k === 'pao' ? 'fixed' : ''} ${IT.remove.has(i) ? 'off' : ''}" style="--c:${Stack.COLOR[k] || '#888'}" data-i="${esc(i)}" onclick="toggleIng(this.dataset.i)"><i></i>${esc(i)}</button>`;
@@ -469,12 +510,13 @@ function itemView() {
       <span class="turbo-ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg></span>
       <span class="turbo-txt"><small>Turbina por + ${fmt(up.preco - p.preco)}</small><b>Vira ${esc(up.nome)}</b><span>${extra.length ? 'ganha ' + extra.map(e => '+ ' + esc(e)).join(', ') : 'versão mais caprichada'}</span></span>
       <span class="sw"></span></button>` : ''}
+    ${acceptsAdds(shown) && S.adds.length ? `<p class="it-label">Capricha mais · adicionais</p><div class="chips adds">${S.adds.map(x => `<button class="chip-a ${IT.adds.includes(x.id) ? 'on' : ''}" onclick="toggleAdd('${x.id}')"><span>+ ${esc(x.nome)}</span><b>${short(x.preco)}</b></button>`).join('')}</div>` : ''}
     ${IT.obsOpen
       ? `<div class="pad" style="margin-top:16px"><textarea class="field" id="itObs" maxlength="140" placeholder="Ex.: bem passado, molho à parte…" oninput="IT.obs=this.value">${esc(IT.obs)}</textarea></div>`
       : `<button class="obs-link" onclick="IT.obsOpen=true;refreshSheet();setTimeout(()=>$('itObs')?.focus(),60)">+ Alguma observação?</button>`}
     <div class="foot-bar">
       <div class="qty"><button onclick="itQty(-1)" aria-label="Menos">−</button><span>${IT.qty}</span><button onclick="itQty(1)" aria-label="Mais">+</button></div>
-      <button class="btn" id="itBtn" onclick="itConfirm()"><span>Adicionar</span><span>${short(shown.preco * IT.qty)}</span></button>
+      <button class="btn" id="itBtn" onclick="itConfirm()"><span>Adicionar</span><span>${short(unit * IT.qty)}</span></button>
     </div>`;
 }
 function itShow(v) { IT.show = v; IT.anim = v === 'inside' ? 'build' : 'none'; refreshSheet(); }
@@ -499,13 +541,22 @@ async function toggleTurbo() {
   else { if (IT.show === 'inside') await animateOut(extra); IT.turbo = false; }
   refreshSheet();
 }
+// adicional entra no desenho como uma camada nova caindo
+async function toggleAdd(id) {
+  const x = S.addById.get(id); if (!x) return;
+  buzz();
+  if (IT.show === 'photo') { IT.show = 'inside'; IT.anim = 'none'; }
+  if (IT.adds.includes(id)) { IT.adds = IT.adds.filter(a => a !== id); }
+  else { IT.adds.push(id); IT.hl = [addLayer(x)]; }
+  refreshSheet();
+}
 function itQty(d) { IT.qty = Math.max(1, Math.min(20, IT.qty + d)); refreshSheet(); }
 async function itConfirm() {
   const p = S.byId.get(IT.id), shown = itShown(), btn = $('itBtn');
   btn.disabled = true; btn.classList.add('done'); btn.innerHTML = '<span>Adicionado ✓</span><span></span>';
   buzz(20);
   flyToCart($('itMedia'));
-  addLine({ id: shown.id, qty: IT.qty, remove: [...IT.remove].filter(i => shown.ing.includes(i)), obs: (IT.obs || '').trim(), origem: shown === p ? 'cardapio' : 'upgrade' });
+  addLine({ id: shown.id, qty: IT.qty, remove: [...IT.remove].filter(i => shown.ing.includes(i)), adds: [...IT.adds], obs: (IT.obs || '').trim(), origem: shown === p ? 'cardapio' : 'upgrade' });
   await wait(reduced ? 0 : 520);
   if (drinksInCart() === 0 && S.drinkAsked < 2) { S.drinkAsked++; openDrinks(shown); }
   else { closeSheet(); toast(`${shown.nome} na comanda`); }
@@ -543,6 +594,7 @@ function openWater(p, origem) {
 
 // ── Comanda ────────────────────────────────────────────────
 const lineObs = l => [l.remove?.length ? 'SEM ' + l.remove.join(', ') : '', l.obs].filter(Boolean).join(' · ');
+const lineAdds = l => addsOf(l).map(x => '+ ' + x.nome).join(', ');
 function suggestions() {
   const out = [];
   if (drinksInCart() === 0) {
@@ -556,6 +608,9 @@ function suggestions() {
     out.push(`<div class="rc-sug"><div class="rc-sug-txt"><b>Turbina o ${esc(p.nome)}?</b>Vira ${esc(u.nome)}${extra.length ? ' (+ ' + esc(extra.join(', ')) + ')' : ''} por + ${fmt(u.preco - p.preco)}${cand.qty > 1 ? ' cada' : ''}.</div>
       <button class="rc-sug-btn" onclick="upgradeLine('${cand.key}')">Turbinar</button></div>`);
   }
+  const molho = findProd(/^molho verde/i);
+  if (molho && lanchesInCart() > 0 && !S.cart.some(l => isMolho(S.byId.get(l.id))))
+    out.push(`<div class="rc-sug"><div class="rc-sug-txt"><b>Molho verde da casa?</b>O sachê de 20g sai por ${fmt(molho.preco)}.</div><button class="rc-sug-btn" onclick="addLine({id:'${molho.id}',origem:'bump'});buzz();refreshSheet()">+ ${short(molho.preco)}</button></div>`);
   const deal = familyDeal();
   if (deal && drinksInCart() > 0 && out.length < 2) out.push(`<div class="rc-sug"><div class="rc-sug-txt"><b>Pra galera</b>${esc(deal.big.nome)} por ${fmt(deal.big.preco)}.</div><button class="rc-sug-btn" onclick="addLine({id:'${deal.big.id}',origem:'bump'});buzz();refreshSheet()">+ Levar</button></div>`);
   return out.slice(0, 2).join('');
@@ -564,7 +619,7 @@ function upgradeLine(key) {
   const l = S.cart.find(x => x.key === key); if (!l) return;
   const p = S.byId.get(l.id), u = S.byId.get(p.upgrade_para);
   S.cart = S.cart.filter(x => x !== l);
-  addLine({ id: u.id, qty: l.qty, remove: (l.remove || []).filter(i => u.ing.includes(i)), obs: l.obs, origem: 'upgrade' });
+  addLine({ id: u.id, qty: l.qty, remove: (l.remove || []).filter(i => u.ing.includes(i)), adds: l.adds || [], obs: l.obs, origem: 'upgrade' });
   buzz(15); toast(`Turbinado: ${u.nome}`); refreshSheet();
 }
 function changeLine(key, d) {
@@ -588,10 +643,11 @@ function receiptView() {
   return `<div class="receipt">
       <div class="rc-head"><b>Comanda</b><span>ADRIANO LANCHES · ${now}</span></div>
       ${S.cart.map(l => { const p = S.byId.get(l.id); if (!p) return ''; const o = lineObs(l);
+        const ad = lineAdds(l);
         return `<div class="rc-item"><div class="rc-thumb">${media(p)}</div>
-          <div class="rc-name">${l.qty}x ${esc(p.nome)}</div><div class="rc-price">${fmt(p.preco * l.qty)}</div>
-          ${o ? `<div class="rc-obs">${esc(o)}</div>` : ''}
-          <div class="rc-ctrl"><button onclick="changeLine('${l.key}',-1)" aria-label="Menos">−</button><span>${l.qty}</span><button onclick="changeLine('${l.key}',1)" aria-label="Mais">+</button><span class="unit">${fmt(p.preco)} un.</span></div></div>`; }).join('')}
+          <div class="rc-name">${l.qty}x ${esc(p.nome)}</div><div class="rc-price">${fmt(linePrice(l) * l.qty)}</div>
+          ${ad ? `<div class="rc-adds">${esc(ad)}</div>` : ''}${o ? `<div class="rc-obs">${esc(o)}</div>` : ''}
+          <div class="rc-ctrl"><button onclick="changeLine('${l.key}',-1)" aria-label="Menos">−</button><span>${l.qty}</span><button onclick="changeLine('${l.key}',1)" aria-label="Mais">+</button><span class="unit">${fmt(linePrice(l))} un.</span></div></div>`; }).join('')}
       ${suggestions()}${freteHTML()}
       <div class="modes">
         <button class="seg ${S.mode === 'delivery' ? 'on' : ''}" onclick="setMode('delivery')">Entrega<small>${esc(c.tempo_entrega || '')} · ${c.taxa_entrega ? short(c.taxa_entrega) : 'grátis'}</small></button>
@@ -675,11 +731,11 @@ async function placeOrder() {
     troco_para: S.pay === 'dinheiro' && cli.troco ? String(cli.troco).replace(',', '.').replace(/[^\d.]/g, '') : null,
     observacoes: cli.obsPedido || null,
   };
-  const itens = S.cart.map(l => ({ produto_id: l.id, quantidade: l.qty, observacao: lineObs(l) || null, origem: l.origem }));
+  const itens = S.cart.map(l => ({ produto_id: l.id, quantidade: l.qty, adicionais: l.adds || [], observacao: lineObs(l) || null, origem: l.origem }));
   const { data, error } = await supa.rpc('criar_pedido', { p_loja_slug: LOJA_SLUG, p_pedido: pedido, p_itens: itens });
   if (error) { btn.disabled = false; btn.firstElementChild.textContent = 'Fazer pedido'; return err(error.message || 'Não deu pra enviar. Tenta de novo?'); }
   store.set('adl_cliente', { ...cli, mode: S.mode, pay: S.pay, obsPedido: '' });
-  store.set('adl_ultimo', { at: Date.now(), itens: S.cart.map(l => ({ id: l.id, qty: l.qty, remove: l.remove, obs: l.obs })), total: data.total });
+  store.set('adl_ultimo', { at: Date.now(), itens: S.cart.map(l => ({ id: l.id, qty: l.qty, remove: l.remove, adds: l.adds, obs: l.obs })), total: data.total });
   store.set('adl_pedido', { token: data.token, numero: data.numero, at: Date.now() });
   S.cart = []; S.drinkAsked = 0; saveCart(); renderAgain();
   openTrack(data.token, data.numero, true);
@@ -728,7 +784,7 @@ function trackView() {
   const steps = [['1', 'Pedido recebido'], ['2', 'Na chapa'], ['3', ret ? 'Pronto pra retirar' : 'Saiu pra entrega'], ['4', ret ? 'Retirado' : 'Entregue']];
   const cur = { novo: 0, preparo: 1, pronto: 2, entrega: 2, finalizado: 3 }[d.status] ?? 0;
   const num = '#' + String(d.numero).padStart(3, '0');
-  if (d.status === 'cancelado') return `<div class="track"><div class="stamp" style="border-color:var(--muted);color:var(--muted)">Cancelado<small>${num}</small></div><p>A loja cancelou esse pedido. Chama no WhatsApp se tiver dúvida.</p><div class="actions"><button class="btn center" onclick="clearActive();closeSheet()">Fechar</button></div></div>`;
+  if (d.status === 'cancelado') return `<div class="track"><div class="stamp" style="border-color:var(--muted);color:var(--muted)">Cancelado<small>${num}</small></div><p>A loja cancelou esse pedido.${S.loja?.config?.whatsapp ? ` <a href="https://wa.me/${esc(S.loja.config.whatsapp)}" target="_blank" rel="noopener" style="color:var(--yellow)">Chama no WhatsApp</a> se tiver dúvida.` : ''}</p><div class="actions"><button class="btn center" onclick="clearActive();closeSheet()">Fechar</button></div></div>`;
   return `<div class="track">
     <div class="stamp" ${d.fresh ? '' : 'style="animation:none"'}>${cur >= 3 ? 'Entregue' : 'Recebido'}<small>pedido ${num}</small></div>
     <p>${cur >= 3 ? 'Valeu demais. Bom apetite!' : 'Pode fechar: o status aparece aqui em cima.'}</p>
@@ -775,7 +831,7 @@ function ready() {
 }
 (async function init() {
   const cache = store.get('adl2_menu');
-  if (cache?.loja) { applyMenu(cache.loja, cache.cats || [], cache.prods || []); syncCart(); renderAll(); ready(); }
+  if (cache?.loja) { applyMenu(cache.loja, cache.cats || [], cache.prods || [], cache.adds || []); syncCart(); renderAll(); ready(); }
   try {
     await Promise.all([loadMenu(), loadSocial()]);
     syncCart(); renderAll(); ready(); subscribe(); checkActive();
@@ -789,5 +845,5 @@ function ready() {
 Object.assign(window, {
   openItem, quickAdd, addDrink, goCat, repeatLast, closeSheet, refreshSheet, itShow, toggleIng, toggleTurbo, itQty, itConfirm,
   openReceipt, openCheckout, changeLine, upgradeLine, setMode, keepForm, placeOrder, maskTel, addLine, buzz, toast,
-  copyPix, informarPix, clearActive,
+  copyPix, informarPix, clearActive, toggleAdd,
 });
