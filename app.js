@@ -333,8 +333,9 @@ function taxa() {
   if (S.mode !== 'delivery' || !S.cart.length) return 0;
   const c = S.loja?.config || {};
   if (c.frete_gratis_acima && subtotal() >= Number(c.frete_gratis_acima)) return 0;
-  return Number(c.taxa_entrega || 0);
+  return Entrega.fee(c, S.geo).taxa;
 }
+const taxaLabel = c => Entrega.enabled(c) && !S.geo ? `${fmt(c.taxa_entrega || 0)} a ${fmt(c.taxa_entrega_longe)}` : fmt(Entrega.fee(c, S.geo).taxa);
 const total = () => subtotal() + taxa();
 
 // Frete grátis: só aparece se a loja configurar um valor no painel
@@ -613,7 +614,7 @@ function receiptView() {
       ${suggestions()}
       ${freteHTML()}
       <div class="rc-mode">
-        <button class="seg ${S.mode === 'delivery' ? 'on' : ''}" onclick="setMode('delivery')">🛵 Entrega<small>${c.tempo_entrega || ''} · ${c.taxa_entrega ? fmt(c.taxa_entrega) : 'grátis'}</small></button>
+        <button class="seg ${S.mode === 'delivery' ? 'on' : ''}" onclick="setMode('delivery')">🛵 Entrega<small>${c.tempo_entrega || ''} · ${c.taxa_entrega ? taxaLabel(c) : 'grátis'}</small></button>
         <button class="seg ${S.mode === 'retirada' ? 'on' : ''}" onclick="setMode('retirada')">🏃 Retirada<small>${c.tempo_retirada || ''} · sem taxa</small></button>
       </div>
       <div class="rc-totals">
@@ -635,7 +636,12 @@ function maskTel(v) {
   if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
 }
-function openCheckout() { openSheet(checkoutView); }
+function openCheckout() {
+  const cli = store.get('adl_cliente') || {};
+  if (!S.geo && cli.geo && cli.geoKey === [cli.rua, cli.numero, cli.bairro].map(v => (v || '').trim().toLowerCase()).join('|')) S.geo = cli.geo;
+  openSheet(checkoutView);
+  if (S.mode === 'delivery' && !S.geo && cli.rua && cli.numero && Entrega.enabled(S.loja.config)) scheduleGeocode();
+}
 function checkoutView() {
   const cli = store.get('adl_cliente') || {};
   const st = lojaStatus();
@@ -656,13 +662,14 @@ function checkoutView() {
       <div class="co-sec">
         <span class="co-label">Como recebe</span>
         <div class="rc-mode" style="margin:0">
-          <button class="seg ${S.mode === 'delivery' ? 'on' : ''}" onclick="keepForm();setMode('delivery')">🛵 Entrega<small>+ ${fmt(c.taxa_entrega || 0)}</small></button>
+          <button class="seg ${S.mode === 'delivery' ? 'on' : ''}" onclick="keepForm();setMode('delivery')">🛵 Entrega<small>+ ${taxaLabel(c)}</small></button>
           <button class="seg ${S.mode === 'retirada' ? 'on' : ''}" onclick="keepForm();setMode('retirada')">🏃 Retirada<small>sem taxa</small></button>
         </div>
         ${S.mode === 'delivery' ? `
           <div class="co-grid"><input class="field" id="coRua" autocomplete="address-line1" placeholder="Rua / Avenida" value="${esc(cli.rua || '')}"><input class="field" id="coNum" inputmode="numeric" placeholder="Nº" value="${esc(cli.numero || '')}"></div>
           <input class="field" id="coBairro" placeholder="Bairro" value="${esc(cli.bairro || '')}">
-          <input class="field" id="coComp" placeholder="Complemento / ponto de referência" value="${esc(cli.comp || '')}">`
+          <input class="field" id="coComp" placeholder="Complemento / ponto de referência" value="${esc(cli.comp || '')}">
+          ${Entrega.enabled(c) ? `<div class="geo" id="geoBox">${geoHTML()}</div>` : ''}`
         : `<div class="co-note">📍 Retire em: <b>${esc(c.endereco || '')}</b></div>`}
       </div>
       <div class="co-sec">
@@ -675,19 +682,61 @@ function checkoutView() {
         <span class="co-label">Observação do pedido</span>
         <textarea class="field" id="coObs" maxlength="300" placeholder="Opcional">${esc(cli.obsPedido || '')}</textarea>
       </div>
-      <div class="rc-totals" style="font-family:var(--f-mono)">
-        <div class="rc-row"><span>${count()} ${count() === 1 ? 'item' : 'itens'}</span><span>${fmt(subtotal())}</span></div>
-        <div class="rc-row"><span>${S.mode === 'delivery' ? 'Entrega' : 'Retirada'}</span><span class="${taxa() ? '' : 'free'}">${taxa() ? fmt(taxa()) : 'grátis'}</span></div>
-        <div class="rc-row total"><span>TOTAL</span><span>${fmt(total())}</span></div>
-      </div>
+      <div class="rc-totals" style="font-family:var(--f-mono)" id="coSum">${coSumHTML()}</div>
       <p class="co-err" id="coErr"></p>
     </div>
     <div class="it-foot">
-      <button class="btn" id="coBtn" onclick="placeOrder()" ${st.open ? '' : 'disabled'}><span>${st.open ? 'Mandar pra chapa' : 'Loja fechada'}</span><span>${fmt(total())}</span></button>
+      <button class="btn" id="coBtn" onclick="placeOrder()" ${st.open ? '' : 'disabled'}><span>${st.open ? 'Mandar pra chapa' : 'Loja fechada'}</span><span id="coTotal">${fmt(total())}</span></button>
     </div>`;
 }
 // guarda o que já foi digitado antes de re-renderizar o form
 $('sheetBody').addEventListener('input', e => { if (e.target.closest('.co') && $('coNome')) keepForm(); });
+function coSumHTML() {
+  const tx = taxa(), g = S.mode === 'delivery' && S.geo ? Entrega.fee(S.loja.config, S.geo) : null;
+  return `<div class="rc-row"><span>${count()} ${count() === 1 ? 'item' : 'itens'}</span><span>${fmt(subtotal())}</span></div>
+    <div class="rc-row"><span>${S.mode === 'delivery' ? 'Entrega' + (g?.km != null ? ` · ${String(g.km).replace('.', ',')} km` : '') : 'Retirada'}</span><span class="${tx ? '' : 'free'}">${tx ? fmt(tx) : 'grátis'}</span></div>
+    <div class="rc-row total"><span>TOTAL</span><span>${fmt(total())}</span></div>`;
+}
+// ── Distância até o cliente ──
+const addrKey = () => ['coRua', 'coNum', 'coBairro'].map(id => ($(id)?.value || '').trim().toLowerCase()).join('|');
+function geoHTML() {
+  const c = S.loja.config || {}, g = S.geo, f = g ? Entrega.fee(c, g) : null;
+  const raio = String(c.entrega_raio_km).replace('.', ',');
+  if (S.geoBusy) return '<div class="geo-st">Calculando a distância…</div>';
+  if (g) return `<div class="geo-st ok">📍 ${String(f.km).replace('.', ',')} km da loja · entrega <b>${fmt(f.taxa)}</b><small>${g.fonte === 'gps' ? 'pela sua localização' : 'aproximado, pelo endereço'}</small></div>
+    ${g.fonte !== 'gps' ? '<button class="geo-btn" onclick="useGps()">📍 Usar minha localização (mais preciso)</button>' : ''}`;
+  return `<div class="geo-st">Até ${raio} km: <b>${fmt(c.taxa_entrega)}</b> · acima: <b>${fmt(c.taxa_entrega_longe)}</b>${S.geoFail ? '<small>Não achamos esse endereço no mapa. Usa sua localização ou a loja confere.</small>' : ''}</div>
+    <button class="geo-btn" onclick="useGps()">📍 Usar minha localização</button>`;
+}
+function refreshCo() {
+  if ($('geoBox')) $('geoBox').innerHTML = geoHTML();
+  if ($('coSum')) $('coSum').innerHTML = coSumHTML();
+  if ($('coTotal')) $('coTotal').textContent = fmt(total());
+}
+function saveGeo() { const cli = store.get('adl_cliente') || {}; store.set('adl_cliente', { ...cli, geo: S.geo, geoKey: S.geo ? addrKey() : null }); }
+async function useGps() {
+  clearTimeout(geoT); // GPS manda: a busca pelo endereço não pode passar por cima
+  S.geoBusy = true; S.geoFail = false; refreshCo();
+  try { S.geo = await Entrega.gps(); saveGeo(); buzz(); }
+  catch (e) { toast(e.message); }
+  S.geoBusy = false; refreshCo();
+}
+let geoT;
+function scheduleGeocode() {
+  clearTimeout(geoT);
+  if (S.geo?.fonte === 'gps' && store.get('adl_cliente')?.geoKey === addrKey()) return;
+  S.geo = null; S.geoFail = false; refreshCo();
+  geoT = setTimeout(async () => {
+    const rua = $('coRua')?.value.trim(), numero = $('coNum')?.value.trim(), bairro = $('coBairro')?.value.trim();
+    if (!rua || !numero || S.geo?.fonte === 'gps') return;
+    S.geoBusy = true; refreshCo();
+    const g = await Entrega.geocode(S.loja.config, { rua, numero, bairro });
+    S.geoBusy = false;
+    if (S.geo?.fonte === 'gps') return refreshCo();
+    S.geo = g; S.geoFail = !g; saveGeo(); refreshCo();
+  }, 900);
+}
+$('sheetBody').addEventListener('input', e => { if (['coRua', 'coNum', 'coBairro'].includes(e.target.id) && Entrega.enabled(S.loja?.config)) scheduleGeocode(); });
 function keepForm() {
   const v = id => $(id)?.value;
   const cli = store.get('adl_cliente') || {};
@@ -710,7 +759,7 @@ async function placeOrder() {
   const pedido = {
     cliente_nome: cli.nome.trim(), cliente_telefone: cli.tel,
     tipo_entrega: S.mode, forma_pagamento: S.pay,
-    endereco: S.mode === 'delivery' ? { rua: cli.rua, numero: cli.numero, bairro: cli.bairro, complemento: cli.comp || null } : null,
+    endereco: S.mode === 'delivery' ? { rua: cli.rua, numero: cli.numero, bairro: cli.bairro, complemento: cli.comp || null, ...(S.geo ? { lat: S.geo.lat, lng: S.geo.lng, fonte: S.geo.fonte } : {}) } : null,
     troco_para: S.pay === 'dinheiro' && cli.troco ? String(cli.troco).replace(',', '.').replace(/[^\d.]/g, '') : null,
     observacoes: cli.obsPedido || null,
   };
@@ -781,8 +830,8 @@ function pixHTML() {
     <p class="pix-to">Para <b>${esc(S.loja.nome)}</b> · chave ${esc(keyLabel)}</p>
     <button class="btn ghost center" onclick="copyPix(this)" data-code="${esc(code)}">Copiar código PIX</button>
     ${sent
-      ? '<span class="pix-ok pix-wait">Comprovante enviado. Assim que a loja conferir, aparece "confirmado" aqui.</span><button class="pix-link" onclick="sendProof(true)">Abrir o WhatsApp de novo</button>'
-      : '<button class="btn wa center" onclick="sendProof()">Já paguei · enviar comprovante</button><p class="pix-hint">Abre o WhatsApp da loja com o número do pedido. É só anexar o print do PIX.</p>'}
+      ? `<span class="pix-ok pix-wait">${d.comprovante ? '📎 Comprovante recebido.' : 'Aviso enviado.'} Assim que a loja conferir, aparece "confirmado" aqui.</span>${d.comprovante ? '' : '<label class="pix-link">Anexar o comprovante aqui<input type="file" accept="image/*,application/pdf" hidden onchange="attachProof(this)"></label>'}`
+      : `<label class="btn wa center pix-attach ${S.uploading ? 'busy' : ''}">${S.uploading ? 'Enviando comprovante…' : '📎 Já paguei · anexar comprovante'}<input type="file" accept="image/*,application/pdf" hidden onchange="attachProof(this)"></label><p class="pix-hint">Escolhe o print do PIX na galeria. Ele chega direto no painel da loja.</p><button class="pix-link" onclick="sendProof()">Prefere mandar no WhatsApp?</button>`}
   </div>`;
 }
 async function copyPix(btn) {
@@ -790,6 +839,15 @@ async function copyPix(btn) {
   try { await navigator.clipboard.writeText(code); }
   catch { const t = document.createElement('textarea'); t.value = code; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
   btn.textContent = 'Copiado ✓'; buzz(); setTimeout(() => { btn.textContent = 'Copiar código PIX'; }, 2200);
+}
+async function attachProof(input) {
+  const file = input.files?.[0]; if (!file) return;
+  S.uploading = true; refreshSheet();
+  try {
+    await Comprovante.enviar(supa, LOJA_SLUG, trackToken, file);
+    trackData.pix_informado = true; trackData.comprovante = true; buzz(20); toast('Comprovante enviado ✓');
+  } catch (e) { toast(e.message); }
+  S.uploading = false; refreshSheet(); renderLivePill();
 }
 async function sendProof(again = false) {
   const c = S.loja.config || {}, d = trackData;
@@ -866,5 +924,5 @@ function toast(msg) {
 Object.assign(window, {
   openItem, quickAdd, addDrink, goCat, repeatLast, closeSheet, refreshSheet, toggleIng, toggleUpgrade, itQty, itConfirm,
   openReceipt, openCheckout, changeLine, upgradeLine, setMode, keepForm, placeOrder, maskTel, addLine, buzz, afterWater,
-  clearActive, copyPix, sendProof, openTrack,
+  clearActive, copyPix, sendProof, openTrack, useGps, attachProof,
 });

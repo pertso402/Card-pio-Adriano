@@ -583,3 +583,14 @@ textarea.field { resize: vertical; min-height: 70px; }
 @keyframes nudge { 0%, 100% { transform: translateX(-50%); } 50% { transform: translateX(-50%) scale(1.05); } }
 .dup { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: #FFF1C9; border: 2px solid var(--ink); font-size: .88rem; line-height: 1.4; }
 .dup button { display: block; margin-top: 8px; font-weight: 800; text-decoration: underline; }
+
+/* ── Entrega por distância ── */
+.geo { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: var(--paper-2); border: 2px dashed var(--ink-3); }
+.geo-st { font-size: .88rem; color: var(--ink-2); line-height: 1.4; }
+.geo-st b { color: var(--ink); }
+.geo-st.ok { color: var(--ink); }
+.geo-st small { display: block; font-size: .76rem; color: var(--ink-3); margin-top: 2px; }
+.geo-btn { justify-self: start; padding: 9px 12px; border-radius: 12px; background: var(--ink); color: #fff; font-weight: 800; font-size: .84rem; }
+.pix-attach { cursor: pointer; display: flex; }
+.pix-attach.busy { opacity: .7; pointer-events: none; }
+label.pix-link { display: inline-block; cursor: pointer; }
