@@ -681,6 +681,7 @@ function checkoutView() {
   return `<div class="co dark">
       <button class="co-back" onclick="openReceipt()">← Voltar pra comanda</button>
       <h3>Quase lá</h3>
+      ${(() => { const ap = store.get('adl_pedido'); return ap && TD?.numero === ap.numero && pedidoVivo(TD) ? `<div class="dup">Você já tem o pedido <b>#${String(ap.numero).padStart(3, '0')}</b> em andamento${pixPendente(TD) ? ', esperando o PIX' : ''}. <button onclick="openTrack('${ap.token}', ${ap.numero})">Ver esse pedido</button></div>` : ''; })()}
       ${st.open ? '' : `<div class="closed">${esc(st.text)}. Sua comanda fica salva até abrir.</div>`}
       <div class="co-sec"><span class="co-label">Quem tá pedindo</span>
         <input class="field" id="coNome" autocomplete="name" placeholder="Seu nome" value="${esc(cli.nome || '')}">
@@ -710,6 +711,7 @@ function checkoutView() {
     </div>
     <div class="foot-bar"><button class="btn" id="coBtn" onclick="placeOrder()" ${st.open ? '' : 'disabled'}><span>${st.open ? 'Fazer pedido' : 'Loja fechada'}</span><span>${short(total())}</span></button></div>`;
 }
+$('sheetBody').addEventListener('input', e => { if (e.target.closest('.co') && $('coNome')) keepForm(); });
 function keepForm() {
   const cli = { ...(store.get('adl_cliente') || {}) };
   [['nome', 'coNome'], ['tel', 'coTel'], ['rua', 'coRua'], ['numero', 'coNum'], ['bairro', 'coBairro'], ['comp', 'coComp'], ['troco', 'coTroco'], ['obsPedido', 'coObs']]
@@ -747,6 +749,7 @@ let trackT = null, TD = null, trackToken = null;
 function stopTrack() { clearInterval(trackT); trackT = null; }
 function openTrack(token, numero, fresh = false) {
   trackToken = token;
+  setTimeout(() => setOrderHash(token), 0);
   TD = { numero, status: 'novo', tipo_entrega: S.mode, forma_pagamento: S.pay, itens: [], fresh };
   openSheet(trackView);
   const poll = async () => {
@@ -814,7 +817,7 @@ function trackView() {
     <div class="actions"><button class="btn ${cur >= 3 ? '' : 'light'} center" onclick="${cur >= 3 ? 'clearActive();' : ''}closeSheet()">${cur >= 3 ? 'Fechar' : 'Voltar pro cardápio'}</button></div>
   </div>`;
 }
-function clearActive() { store.del('adl_pedido'); renderLive(); }
+function clearActive() { store.del('adl_pedido'); setOrderHash(null); renderLive(); }
 function renderLive() {
   const a = store.get('adl_pedido'), el = $('live');
   const old = a && Date.now() - a.at > 6 * 3600e3;
@@ -823,16 +826,39 @@ function renderLive() {
   const st = TD?.numero === a.numero ? TD.status : 'novo';
   const label = { novo: 'recebido', preparo: 'na chapa', pronto: 'pronto!', entrega: 'saiu pra entrega' }[st];
   const pix = TD?.numero === a.numero && TD.forma_pagamento === 'pix' && !TD.pago && S.loja?.config?.chave_pix && !TD.pix_informado ? ' · pagar PIX' : '';
-  el.innerHTML = `<i></i>Pedido #${String(a.numero).padStart(3, '0')} · ${label}${pix}`;
+  const alert = TD?.numero === a.numero && pixPendente(TD);
+  el.classList.toggle('alert', alert);
+  el.innerHTML = alert ? `<i></i>Falta pagar o PIX · pedido #${String(a.numero).padStart(3, '0')}` : `<i></i>Pedido #${String(a.numero).padStart(3, '0')} · ${label}${pix}`;
   el.hidden = false;
   el.onclick = () => openTrack(a.token, a.numero);
 }
-async function checkActive() {
-  const a = store.get('adl_pedido'); if (!a) return;
+// ── Pedido em aberto: o cliente nunca perde o pedido nem o PIX ──
+// PIX por pagar = pediu no PIX, a loja tem chave, ainda não pagou nem mandou comprovante
+const pixPendente = d => !!d && d.forma_pagamento === 'pix' && !d.pago && !d.pix_informado && !['cancelado', 'finalizado'].includes(d.status) && !!S.loja?.config?.chave_pix;
+const pedidoVivo = d => !!d && !['cancelado', 'finalizado'].includes(d.status);
+let activeTimer = null;
+async function refreshActive(reason = 'tick') {
+  const a = store.get('adl_pedido'); if (!a) return null;
   const { data } = await supa.rpc('status_pedido', { p_token: a.token });
-  if (!data) { store.del('adl_pedido'); return; }
+  if (!data) { store.del('adl_pedido'); setOrderHash(null); renderLive(); return null; }
+  if (a.numero !== data.numero) store.set('adl_pedido', { ...a, numero: data.numero });
   TD = data; renderLive();
-  if (!['finalizado', 'cancelado'].includes(data.status)) setTimeout(checkActive, 20000);
+  // voltou do app do banco (ou a página recarregou) com o PIX por pagar: o QR volta pra frente
+  if (reason !== 'tick' && pixPendente(data) && !$('sheet').classList.contains('open')) openTrack(a.token, data.numero);
+  if (!pedidoVivo(data)) { clearInterval(activeTimer); activeTimer = null; }
+  return data;
+}
+function checkActive() {
+  // o link do pedido na URL (#pedido=...) também traz o pedido de volta
+  const m = location.hash.match(/pedido=([0-9a-f-]{36})/i);
+  if (m && store.get('adl_pedido')?.token !== m[1]) store.set('adl_pedido', { token: m[1], numero: 0, at: Date.now() });
+  if (!store.get('adl_pedido')) return;
+  refreshActive('load');
+  clearInterval(activeTimer); activeTimer = setInterval(() => refreshActive('tick'), 20000);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && store.get('adl_pedido')) refreshActive('back'); });
+function setOrderHash(token) {
+  try { history.replaceState(history.state, '', location.pathname + location.search + (token ? '#pedido=' + token : '')); } catch {}
 }
 
 // ── Toast ──────────────────────────────────────────────────
@@ -865,5 +891,5 @@ function ready() {
 Object.assign(window, {
   openItem, quickAdd, addDrink, goCat, repeatLast, closeSheet, refreshSheet, itShow, toggleIng, toggleTurbo, itQty, itConfirm,
   openReceipt, openCheckout, changeLine, upgradeLine, setMode, keepForm, placeOrder, maskTel, addLine, buzz, toast,
-  copyPix, informarPix, clearActive, toggleAdd, sendProof,
+  copyPix, informarPix, clearActive, toggleAdd, sendProof, openTrack,
 });

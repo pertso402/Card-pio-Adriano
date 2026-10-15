@@ -498,3 +498,10 @@ textarea.field { resize: vertical; min-height: 72px; }
 .btn.wa { background: #1FAF5A; box-shadow: 0 10px 24px -8px rgba(31, 175, 90, .6); gap: 8px; justify-content: center; }
 .pix-hint { font-size: .74rem !important; color: #8a7462 !important; margin-top: 8px !important; }
 .pix-link { margin-top: 8px; font-size: .8rem; font-weight: 700; color: #13753A; text-decoration: underline; text-underline-offset: 3px; }
+
+/* pedido em aberto */
+.live.alert { background: var(--red); color: #fff; animation: drop-in .5s var(--spring), nudge 1.6s ease-in-out .5s infinite; }
+.live.alert i { background: #fff; }
+@keyframes nudge { 0%, 100% { transform: translateX(-50%); } 50% { transform: translateX(-50%) scale(1.05); } }
+.dup { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 201, 60, .12); box-shadow: inset 0 0 0 1px rgba(255, 201, 60, .4); font-size: .88rem; line-height: 1.4; color: var(--text); }
+.dup button { display: block; margin-top: 8px; font-weight: 800; color: var(--yellow); text-decoration: underline; text-underline-offset: 3px; }
