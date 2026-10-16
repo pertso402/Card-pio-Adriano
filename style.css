@@ -30,10 +30,11 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-html { scroll-padding-top: 120px; }
+html { scroll-padding-top: 120px; overflow-x: hidden; }
+@supports (overflow-x: clip) { html { overflow-x: clip; } }
 body {
   font-family: var(--f); color: var(--text); background: var(--bg);
-  min-height: 100vh; overflow-x: hidden; -webkit-font-smoothing: antialiased;
+  min-height: 100vh; overflow-x: clip; position: relative; -webkit-font-smoothing: antialiased;
   font-variant-numeric: tabular-nums;
 }
 body.lock { overflow: hidden; }
@@ -53,7 +54,7 @@ em { font-style: normal; }
   display: flex; align-items: center; gap: 10px; padding: env(safe-area-inset-top) var(--gutter) 0;
   transition: background .35s, box-shadow .35s;
 }
-.bar.solid { background: rgba(18, 14, 12, .82); backdrop-filter: saturate(140%) blur(16px); -webkit-backdrop-filter: saturate(140%) blur(16px); box-shadow: 0 1px 0 var(--line); }
+.bar.solid { background: rgba(18, 14, 12, .97); box-shadow: 0 1px 0 var(--line); }
 .bar-logo { width: 38px; height: 38px; border-radius: 11px; }
 .bar-status { display: flex; align-items: center; gap: 7px; font-size: .8rem; font-weight: 600; color: var(--muted); }
 .bar-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 rgba(52, 209, 122, .6); animation: ping 2s infinite; }
@@ -82,7 +83,7 @@ em { font-style: normal; }
   box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .7);
 }
 .hero-media { position: absolute; inset: 0; overflow: hidden; }
-.hero-media img { width: 100%; height: 115%; object-fit: cover; transform: translateY(var(--py, 0)) scale(1.12); transition: transform .1s linear; will-change: transform; }
+.hero-media img { width: 100%; height: 115%; object-fit: cover; transform: translateY(var(--py, 0)) scale(1.12); }
 .hero-card::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.25) 0%, transparent 28%, transparent 52%, rgba(12, 8, 6, .88) 100%); pointer-events: none; }
 .steam { position: absolute; left: 50%; top: 4%; width: 46%; transform: translateX(-50%); z-index: 2; overflow: visible; pointer-events: none; }
 .steam path { fill: none; stroke: rgba(255, 255, 255, .55); stroke-width: 5; stroke-linecap: round; filter: blur(2.5px); opacity: 0; animation: steam 3.6s ease-in-out infinite; }
@@ -260,8 +261,8 @@ body.ready .facts { opacity: 1; transform: none; transition: all .8s var(--out) 
 .flyer img, .flyer svg { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* ── SHEET ──────────────────────────────────────────────── */
-.scrim { position: fixed; inset: 0; z-index: 60; background: rgba(6, 4, 3, .6); opacity: 0; pointer-events: none; transition: opacity .4s; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-.scrim.open { opacity: 1; pointer-events: auto; }
+.scrim { position: fixed; inset: 0; z-index: 60; background: rgba(6, 4, 3, .66); visibility: hidden; opacity: 0; pointer-events: none; transition: opacity .4s, visibility 0s .4s; }
+.scrim.open { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity .4s; }
 .sheet {
   position: fixed; left: 50%; bottom: 0; z-index: 70; width: 100%; max-width: 560px;
   max-height: 94vh; max-height: 94dvh; display: flex; flex-direction: column;

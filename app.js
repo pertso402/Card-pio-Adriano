@@ -190,10 +190,11 @@ function renderHero() {
 }
 // parallax leve da foto do hero
 let scrollTick = false;
+const PARALLAX = matchMedia('(hover: hover) and (pointer: fine)').matches && !reduced;
 function onScroll() {
   const y = scrollY;
   $('bar').classList.toggle('solid', y > 24);
-  if (y < innerHeight * 1.2) $('heroImg').style.setProperty('--py', `${(y * .12).toFixed(1)}px`);
+  if (PARALLAX && y < innerHeight * 1.2) $('heroImg').style.setProperty('--py', `${(y * .12).toFixed(1)}px`);
 }
 addEventListener('scroll', () => { if (!scrollTick) { scrollTick = true; requestAnimationFrame(() => { onScroll(); scrollTick = false; }); } }, { passive: true });
 
