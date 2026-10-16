@@ -142,7 +142,7 @@ function lojaStatus() {
   const abre = toMin(h.abre), fecha = toMin(h.fecha);
   const inHours = abre <= fecha ? (m >= abre && m < fecha) : (m >= abre || m < fecha);
   if (l.modo === 'aberta') return { open: true, text: 'Aberto agora' };
-  if (l.modo === 'fechada') return { open: false, text: 'Fechado agora' };
+  if (l.modo === 'fechada') return { open: false, text: h.abre ? `Fechado · abre às ${h.abre}` : 'Fechado agora' };
   return inHours ? { open: true, text: `Aberto · fecha ${h.fecha}` } : { open: false, text: `Fechado · abre ${h.abre}` };
 }
 
@@ -155,6 +155,8 @@ function renderTop() {
   const st = lojaStatus();
   $('statusText').textContent = st.text;
   $('status').classList.toggle('closed', !st.open);
+  $('closedNote').hidden = st.open;
+  $('closedNoteTxt').textContent = st.text + '.';
   const c = S.loja.config || {};
   $('factEntrega').textContent = c.tempo_entrega || '—';
   $('factRetirada').textContent = c.tempo_retirada || '—';
@@ -507,7 +509,7 @@ function itConfirm(el) {
 
 // ── Upsell de bebida ───────────────────────────────────────
 function upsellDrinks() {
-  const picks = [/^coca-cola lata/i, /^guaraná antarctica lata/i, /^coca-cola zero lata/i, /^fanta lata/i, /^sprite lata/i, /^água/i];
+  const picks = [/^coca-cola lata/i, /^guaraná antarctica lata/i, /^guaraná antarctica 600/i, /^coca-cola zero lata/i, /^fanta lata/i, /^sprite lata/i, /^água/i];
   return picks.map(findProd).filter(Boolean);
 }
 function familyDeal() {
@@ -556,7 +558,7 @@ function lineObs(l) { return [l.remove?.length ? 'SEM ' + l.remove.join(', ') : 
 function suggestions() {
   const out = [];
   if (drinksInCart() === 0) {
-    const d = upsellDrinks().slice(0, 4);
+    const d = upsellDrinks().filter(x => /lata/i.test(x.nome)).slice(0, 4);
     if (d.length) out.push(`<div class="rc-sug" style="flex-wrap:wrap"><span class="rc-sug-ico">🥤</span>
       <div class="rc-sug-txt"><b>Faltou a gelada</b>Um toque e vai junto.</div>
       <div class="rc-mini" style="width:100%">${d.map(x => `<button onclick="addLine({id:'${x.id}',origem:'bump'});buzz();refreshSheet()">${esc(bevLook(x).label)} lata · ${fmtShort(x.preco)}</button>`).join('')}</div></div>`);
