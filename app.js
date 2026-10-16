@@ -147,7 +147,7 @@ function lojaStatus() {
   const m = now.getHours() * 60 + now.getMinutes(), abre = toMin(h.abre), fecha = toMin(h.fecha);
   const inHours = abre <= fecha ? (m >= abre && m < fecha) : (m >= abre || m < fecha);
   if (l.modo === 'aberta') return { open: true, text: 'Aberto agora' };
-  if (l.modo === 'fechada') return { open: false, text: 'Fechado agora' };
+  if (l.modo === 'fechada') return { open: false, text: h.abre ? `Fechado · abre às ${h.abre}` : 'Fechado agora' };
   return inHours ? { open: true, text: `Aberto até ${h.fecha}` } : { open: false, text: `Abre às ${h.abre}` };
 }
 
@@ -157,11 +157,13 @@ function renderStatus() {
   const st = lojaStatus(), c = S.loja.config || {};
   $('statusText').textContent = st.text;
   $('status').classList.toggle('closed', !st.open);
+  $('closedNote').hidden = st.open;
+  $('closedNoteTxt').textContent = st.text + '.';
   $('factEntrega').textContent = c.tempo_entrega || '—';
   $('factRetirada').textContent = c.tempo_retirada || '—';
   $('factTaxa').textContent = c.taxa_entrega ? short(c.taxa_entrega) : 'Grátis';
   $('footAddr').textContent = c.endereco || '';
-  $('footHours').textContent = `todos os dias · ${c.horario?.abre || '19:00'} às ${c.horario?.fecha || '01:00'}`;
+  $('footHours').textContent = `normalmente ${c.horario?.abre || '19:00'} às ${c.horario?.fecha || '01:00'}`;
   $('footLinks').innerHTML = [c.whatsapp ? `<a href="https://wa.me/${esc(c.whatsapp)}" target="_blank" rel="noopener">WhatsApp ${esc(telBR(c.whatsapp))}</a>` : '', c.instagram ? `<a href="https://instagram.com/${esc(c.instagram)}" target="_blank" rel="noopener">@${esc(c.instagram)}</a>` : ''].join('');
   const painel = typeof PAINEL_URL !== 'undefined' ? PAINEL_URL : '';
   $('gear').hidden = !painel; if (painel) $('gear').href = painel;
@@ -567,7 +569,7 @@ async function itConfirm() {
 
 // ── Upsell de bebida ───────────────────────────────────────
 function upsellDrinks() {
-  return [/^coca-cola lata/i, /^guaraná antarctica lata/i, /^coca-cola zero lata/i, /^fanta lata/i, /^sprite lata/i, /^água/i].map(findProd).filter(Boolean);
+  return [/^coca-cola lata/i, /^guaraná antarctica lata/i, /^guaraná antarctica 600/i, /^coca-cola zero lata/i, /^fanta lata/i, /^sprite lata/i, /^água/i].map(findProd).filter(Boolean);
 }
 function familyDeal() {
   const n = lanchesInCart(), big = findProd(/^coca-cola 2l/i), lata = findProd(/^coca-cola lata/i);
@@ -601,7 +603,7 @@ const lineAdds = l => addsOf(l).map(x => '+ ' + x.nome).join(', ');
 function suggestions() {
   const out = [];
   if (drinksInCart() === 0) {
-    const d = upsellDrinks().slice(0, 4);
+    const d = upsellDrinks().filter(x => /lata/i.test(x.nome)).slice(0, 4);
     if (d.length) out.push(`<div class="rc-sug"><div class="rc-sug-txt"><b>Faltou a bebida</b>Um toque e vai junto.</div>
       <div class="rc-mini">${d.map(x => `<button onclick="addLine({id:'${x.id}',origem:'bump'});buzz();refreshSheet()">${esc(bevLook(x).label)} lata · ${short(x.preco)}</button>`).join('')}</div></div>`);
   }

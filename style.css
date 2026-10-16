@@ -519,3 +519,8 @@ textarea.field { resize: vertical; min-height: 72px; }
 .pix-attach { cursor: pointer; }
 .pix-attach.busy { opacity: .7; pointer-events: none; }
 label.pix-link { display: inline-block; cursor: pointer; }
+
+/* loja fechada (aberta e fechada só no manual, pelo painel) */
+.closed-note { display: inline-block; margin: 0 0 14px; padding: 9px 13px; border-radius: 12px; background: rgba(255, 90, 78, .14); border: 1px solid rgba(255, 90, 78, .45); color: var(--text, #fff); font-size: .84rem; line-height: 1.35; }
+.closed-note b { color: var(--red); margin-right: 4px; }
+.closed-note[hidden] { display: none; }
