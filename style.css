@@ -28,13 +28,15 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-html { scroll-behavior: smooth; scroll-padding-top: 64px; }
+html { scroll-padding-top: 64px; overflow-x: hidden; }
+@supports (overflow-x: clip) { html { overflow-x: clip; } }
 body {
+  position: relative;
   font-family: var(--f-body);
   background: var(--paper);
   color: var(--ink);
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
 }
 body.lock { overflow: hidden; }
@@ -45,7 +47,7 @@ input, textarea, select { font: inherit; color: inherit; }
 
 /* Papel com fibra leve */
 body::before {
-  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.07'/%3E%3C/svg%3E");
 }
 
@@ -340,8 +342,8 @@ body::before {
 .ticket-total { font-family: var(--f-display); font-size: 1.25rem; }
 
 /* ── SHEET ──────────────────────────────────────────────── */
-.scrim { position: fixed; inset: 0; background: rgba(27, 15, 12, .55); backdrop-filter: blur(3px); opacity: 0; pointer-events: none; transition: opacity .3s; z-index: 60; }
-.scrim.open { opacity: 1; pointer-events: auto; }
+.scrim { position: fixed; inset: 0; background: rgba(27, 15, 12, .6); visibility: hidden; opacity: 0; pointer-events: none; transition: opacity .3s, visibility 0s .3s; z-index: 60; }
+.scrim.open { opacity: 1; pointer-events: auto; visibility: visible; transition: opacity .3s; }
 .sheet {
   position: fixed; left: 50%; bottom: 0; z-index: 70;
   width: 100%; max-width: var(--maxw); max-height: 92vh; max-height: 92dvh;

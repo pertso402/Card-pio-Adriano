@@ -284,7 +284,8 @@ function observeCats() {
       if (!e.isIntersecting) return;
       const id = e.target.id.replace('cat-', '');
       document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.cat === id));
-      document.querySelector(`.tab[data-cat="${id}"]`)?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+      const tab = document.querySelector(`.tab[data-cat="${id}"]`), box = $('tabs');
+      if (tab && box) box.scrollTo({ left: tab.offsetLeft - box.clientWidth / 2 + tab.offsetWidth / 2, behavior: 'smooth' });
     });
   }, { rootMargin: '-45% 0px -50% 0px' });
   document.querySelectorAll('.cat').forEach(el => catObserver.observe(el));
